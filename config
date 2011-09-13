@@ -1,0 +1,29 @@
+sources = (
+	{
+		name = "DannyCam";
+		type = "network";
+		host = "192.168.2.125";
+		port = 80;
+		path = "/video.mjpg";
+		user = "admin";
+		pass = "admin";
+	},
+	{
+		name = "NewCam1";
+		type = "network";
+		host = "192.168.2.91";
+		port = 80;
+		path = "/video.mjpg";
+		user = "admin";
+		pass = "admin";
+	},
+	{
+		name = "NewCam2";
+		type = "network";
+		host = "192.168.2.92";
+		port = 80;
+		path = "/video.mjpg";
+		user = "admin";
+		pass = "admin";
+	}
+);

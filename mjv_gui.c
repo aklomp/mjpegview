@@ -83,7 +83,7 @@ mjv_gui_show_frame (struct mjv_source *s, struct mjv_frame *frame)
 	assert(frame_height > 0);
 
 	// Get correct drawing area for this source:
-	darea = (mjv_source_get_id(s) == 0) ? &darea_one : &darea_two;
+	darea = (mjv_source_get_id(s) == 1) ? &darea_one : &darea_two;
 
 	// Adjust size of darea to frame if different from previous:
 	if (frame_height != darea_height || frame_width != darea_width) {

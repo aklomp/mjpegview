@@ -259,21 +259,20 @@ err:	if (fd >= 0) {
 static struct mjv_source *
 mjv_source_create (void (*got_frame_callback)(struct mjv_source*, struct mjv_frame*))
 {
-	struct mjv_source *s;
+	int ret;
+	struct mjv_source *s = NULL;
 
 	// Allocate memory for the structure:
 	if ((s = malloc(sizeof(*s))) == NULL) {
-		return NULL;
+		goto err;
 	}
 	// Allocate memory for the read buffer:
 	if ((s->buf = malloc(BUF_SIZE)) == NULL) {
-		free(s);
-		return NULL;
+		goto err;
 	}
 	// Set default values:
 	s->fd = -1;
-	s->id = last_id++;
-	s->name = NULL;
+	s->id = ++last_id;	// First created camera has id #1
 	s->anchor = NULL;
 	s->boundary = NULL;
 	s->framebuf = NULL;
@@ -283,22 +282,39 @@ mjv_source_create (void (*got_frame_callback)(struct mjv_source*, struct mjv_fra
 	s->got_frame_callback = got_frame_callback;
 	reset_frame_variables(s);
 
+	// Set a default name based on the ID:
+	if ((s->name = malloc(15)) == NULL) {
+		goto err;
+	}
+	ret = snprintf(s->name, 15, "Camera %u", s->id);
+	if (ret < 0) {
+		g_printerr("Could not snprintf() the default camera name\n");
+		goto err;
+	}
+	if (ret >= 15) {
+		g_printerr("Not enough space to snprintf() the default camera name\n");
+		goto err;
+	}
 	// Return the new object:
 	return s;
+
+err:	if (s != NULL) {
+		free(s->name);
+		free(s->buf);
+		free(s);
+	}
+	return NULL;
 }
 
 void
 mjv_source_destroy (struct mjv_source *s)
 {
+	assert(s != NULL);
 	if (s->fd >= 0 && close(s->fd) < 0) {
 		Debug("%s\n", g_strerror(errno));
 	}
-	if (s->name != NULL) {
-		g_free(s->name);
-	}
-	if (s->boundary != NULL) {
-		free(s->boundary);
-	}
+	free(s->name);
+	free(s->boundary);
 	if (s->framebuf != NULL) {
 		mjv_framebuf_destroy(s->framebuf);
 	}
@@ -315,15 +331,14 @@ mjv_source_set_name (struct mjv_source *const s, const char *const name)
 	assert(name != NULL);
 
 	// Destroy any existing name:
-	if (s->name != NULL) {
-		g_free(s->name);
-	}
+	free(s->name);
+
 	// Check string length for ridiculousness:
 	if ((name_len = strlen(name)) > 100) {
 		return 0;
 	}
 	// Attempt to allocate memory:
-	if ((s->name = g_try_malloc(name_len + 1)) == NULL) {
+	if ((s->name = malloc(name_len + 1)) == NULL) {
 		return 0;
 	}
 	// Copy name plus terminator into memory, return success:

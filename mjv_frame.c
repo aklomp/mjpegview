@@ -8,26 +8,31 @@
 #include <assert.h>
 #include <jerror.h>
 
+const char *err_malloc  = "Memory allocation failed";
+const char *err_unknown = "Unknown error";
+
 struct mjv_frame {
 	struct timespec *timestamp;
+	char *error;
 	unsigned char *rawbits;
 	unsigned int num_rawbits;
 	unsigned int width;
 	unsigned int height;
 	unsigned int row_stride;
 	unsigned int components;
+	unsigned int successfully_decoded;
 };
 
 struct mjv_frame *
 mjv_frame_create (char *rawbits, unsigned int num_rawbits)
 {
-	struct mjv_frame *f;
+	struct mjv_frame *f = NULL;
 	struct timespec timestamp;
 
 	// First thing, timestamp this frame:
 	if (clock_gettime(CLOCK_REALTIME, &timestamp) != 0) {
 		g_printerr(g_strerror(errno));
-		return NULL;
+		goto err;
 	}
 	// Allocate structure:
 	if ((f = malloc(sizeof(*f))) == NULL) {
@@ -35,14 +40,11 @@ mjv_frame_create (char *rawbits, unsigned int num_rawbits)
 	}
 	// Allocate timestamp struct:
 	if ((f->timestamp = malloc(sizeof(*f->timestamp))) == NULL) {
-		free(f);
-		return NULL;
+		goto err;
 	}
 	// Allocate space for the frame:
 	if ((f->rawbits = malloc(num_rawbits)) == NULL) {
-		free(f->timestamp);
-		free(f);
-		return NULL;
+		goto err;
 	}
 	// Copy timestamp over:
 	memcpy(f->timestamp, &timestamp, sizeof(struct timespec));
@@ -52,18 +54,30 @@ mjv_frame_create (char *rawbits, unsigned int num_rawbits)
 
 	// Set default values:
 	f->num_rawbits = num_rawbits;
+	f->error = NULL;
 	f->width = 0;
 	f->height = 0;
+	f->successfully_decoded = 0;
+
+	// Successful return:
 	return f;
+
+err:	if (f != NULL) {
+		free(f->rawbits);
+		free(f->timestamp);
+		free(f);
+	}
+	return NULL;
 }
 
 void
 mjv_frame_destroy (struct mjv_frame *f)
 {
-	if (f == NULL) return;
-	free(f->rawbits);
-	free(f->timestamp);
-	free(f);
+	if (f != NULL) {
+		free(f->rawbits);
+		free(f->timestamp);
+		free(f);
+	}
 }
 
 unsigned char *
@@ -112,19 +126,20 @@ mjv_frame_to_pixmap (struct mjv_frame *f)
 	}
 	jpeg_finish_decompress(&cinfo);
 	jpeg_destroy_decompress(&cinfo);
+	f->successfully_decoded = 1;
 
 	return pixbuf;
 }
 
 unsigned int
-mjv_frame_get_width (const struct mjv_frame *frame)
+mjv_frame_get_width (const struct mjv_frame *const frame)
 {
 	assert(frame != NULL);
 	return frame->width;
 }
 
 unsigned int
-mjv_frame_get_height (const struct mjv_frame *frame)
+mjv_frame_get_height (const struct mjv_frame *const frame)
 {
 	assert(frame != NULL);
 	return frame->height;

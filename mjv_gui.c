@@ -100,7 +100,7 @@ mjv_gui_show_frame (struct mjv_source *s, struct mjv_frame *frame)
 		      GDK_RGB_DITHER_MAX, pixmap, frame_width * 3);
 
 	gdk_threads_leave();
-	free(pixmap);
+	g_free(pixmap);
 
 	// Frame is no longer needed, and we took responsibility for it:
 	mjv_frame_destroy(frame);

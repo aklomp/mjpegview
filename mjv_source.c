@@ -55,6 +55,7 @@ static unsigned int last_id = 0;
 
 struct mjv_source {
 	int fd;
+	char *name;		// pretty name for this camera
 	char *buf;		// read buffer;
 	char *cur;		// current char under inspection in buffer;
 	char *head;		// where the current read starts;
@@ -272,10 +273,11 @@ mjv_source_create (void (*got_frame_callback)(struct mjv_source*, struct mjv_fra
 	// Set default values:
 	s->fd = -1;
 	s->id = last_id++;
-	s->mimetype = -1;
+	s->name = NULL;
 	s->anchor = NULL;
 	s->boundary = NULL;
 	s->framebuf = NULL;
+	s->mimetype = -1;
 	s->state = STATE_HTTP_BANNER;
 	s->head = s->buflast = s->cur = s->buf;
 	s->got_frame_callback = got_frame_callback;
@@ -291,6 +293,9 @@ mjv_source_destroy (struct mjv_source *s)
 	if (s->fd >= 0 && close(s->fd) < 0) {
 		Debug("%s\n", g_strerror(errno));
 	}
+	if (s->name != NULL) {
+		g_free(s->name);
+	}
 	if (s->boundary != NULL) {
 		free(s->boundary);
 	}
@@ -302,7 +307,40 @@ mjv_source_destroy (struct mjv_source *s)
 }
 
 unsigned int
-mjv_source_get_id (struct mjv_source *s)
+mjv_source_set_name (struct mjv_source *const s, const char *const name)
+{
+	size_t name_len;
+
+	assert(s != NULL);
+	assert(name != NULL);
+
+	// Destroy any existing name:
+	if (s->name != NULL) {
+		g_free(s->name);
+	}
+	// Check string length for ridiculousness:
+	if ((name_len = strlen(name)) > 100) {
+		return 0;
+	}
+	// Attempt to allocate memory:
+	if ((s->name = g_try_malloc(name_len + 1)) == NULL) {
+		return 0;
+	}
+	// Copy name plus terminator into memory, return success:
+	memcpy(s->name, name, name_len + 1);
+	return 1;
+}
+
+const char *
+mjv_source_get_name (const struct mjv_source *const s)
+{
+	// No NULL check for s->name; it is NULL if not yet assigned:
+	assert(s != NULL);
+	return s->name;
+}
+
+unsigned int
+mjv_source_get_id (const struct mjv_source *const s)
 {
 	assert(s != NULL);
 	return s->id;

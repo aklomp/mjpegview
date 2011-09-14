@@ -9,15 +9,7 @@ struct mjv_framebuf {
 	GList *frames;
 };
 
-static void
-destroy_frame (gpointer data, gpointer user_data)
-{
-	(void)user_data;
-
-	// Trivial helper function; user_data is always NULL.
-	g_assert(data != NULL);
-	mjv_frame_destroy(data);
-}
+#define MJV_FRAME(x)	((struct mjv_frame *)((x)->data))
 
 struct mjv_framebuf *
 mjv_framebuf_create (guint capacity)
@@ -33,10 +25,14 @@ mjv_framebuf_create (guint capacity)
 void
 mjv_framebuf_destroy (struct mjv_framebuf *framebuf)
 {
+	GList *link;
+
 	g_assert(framebuf != NULL);
 
 	// Loop over the list, destroy all frames:
-	g_list_foreach(framebuf->frames, destroy_frame, NULL);
+	for (link = g_list_first(framebuf->frames); link; link = g_list_next(link)) {
+		mjv_frame_destroy(MJV_FRAME(link));
+	}
 
 	// Destroy list itself:
 	g_list_free(framebuf->frames);
@@ -55,7 +51,7 @@ mjv_framebuf_frame_append (struct mjv_framebuf *framebuf, struct mjv_frame *fram
 	// delete the first frame:
 	if (g_list_length(framebuf->frames) >= framebuf->capacity) {
 		first = g_list_first(framebuf->frames);
-		mjv_frame_destroy(first->data);
+		mjv_frame_destroy(MJV_FRAME(first));
 		framebuf->frames = g_list_delete_link(framebuf->frames, first);
 	}
 	// Append new node:

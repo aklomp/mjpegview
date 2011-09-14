@@ -21,6 +21,9 @@
 
 // Buffer must be large enough to hold the entire JPEG frame:
 #define BUF_SIZE	100000
+
+// The string length of a constant character array is one less
+// than its apparent size, because of the zero terminator:
 #define STR_LEN(x)	(sizeof(x) - 1)
 
 // Debug print functions:

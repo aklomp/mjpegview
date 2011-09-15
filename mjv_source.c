@@ -72,7 +72,6 @@ struct mjv_source {
 	unsigned int boundary_len;
 	unsigned int response_code;
 	unsigned int content_length;
-	unsigned int byte_counter;
 	struct mjv_framebuf *framebuf;
 
 	// This callback function is called whenever
@@ -81,8 +80,7 @@ struct mjv_source {
 };
 
 static struct mjv_source *mjv_source_create ();
-static void reset_frame_variables (struct mjv_source *);
-static int fetch_header_line (struct mjv_source*, char**, unsigned int *);
+static int fetch_header_line (struct mjv_source *, char **, unsigned int *);
 static inline int increment_cur (struct mjv_source *);
 static inline bool is_numeric (char);
 static inline unsigned int simple_atoi (const char *, const char *);
@@ -280,10 +278,10 @@ mjv_source_create (void (*got_frame_callback)(struct mjv_source*, struct mjv_fra
 	s->boundary = NULL;
 	s->framebuf = NULL;
 	s->mimetype = -1;
+	s->content_length = 0;
 	s->state = STATE_HTTP_BANNER;
 	s->head = s->buflast = s->cur = s->buf;
 	s->got_frame_callback = got_frame_callback;
-	reset_frame_variables(s);
 
 	// Set a default name based on the ID:
 	if ((s->name = malloc(15)) == NULL) {
@@ -333,18 +331,14 @@ mjv_source_set_name (struct mjv_source *const s, const char *const name)
 	assert(s != NULL);
 	assert(name != NULL);
 
-	// Destroy any existing name:
-	free(s->name);
-
 	// Check string length for ridiculousness:
 	if ((name_len = strlen(name)) > 100) {
 		return 0;
 	}
-	// Attempt to allocate memory:
-	if ((s->name = malloc(name_len + 1)) == NULL) {
-		return 0;
-	}
-	// Copy name plus terminator into memory, return success:
+	// Destroy any existing name, reserve memory:
+	s->name = realloc(s->name, name_len + 1);
+
+	// Copy name plus terminator into memory:
 	memcpy(s->name, name, name_len + 1);
 	return 1;
 }
@@ -352,7 +346,6 @@ mjv_source_set_name (struct mjv_source *const s, const char *const name)
 const char *
 mjv_source_get_name (const struct mjv_source *const s)
 {
-	// No NULL check for s->name; it is NULL if not yet assigned:
 	assert(s != NULL);
 	return s->name;
 }
@@ -456,8 +449,6 @@ get_bytes:
 							s->head = s->buf + (s->buflast - s->cur);
 							s->cur = s->buf;
 						}
-						// Do a tiny sleep of 1/50s to allow more data to come in:
-						// usleep(20000);
 						goto get_bytes;
 					}
 					case READ_ERROR: {
@@ -669,17 +660,13 @@ state_find_image (struct mjv_source *s)
 			s->anchor = s->cur;
 		}
 		else if ((s->cur - s->anchor) == 1 && *s->cur == (char)0xd8) {
-			// s->anchor is already on the 0xff byte,
-			// so we've found one byte so far:
-			s->byte_counter = 1;
-
 			// If the content length is known, we can use it to
 			// take a shortcut; else brute search for the EOF:
 			s->state = (s->content_length > 0)
 				? STATE_IMAGE_BY_CONTENT_LENGTH
 				: STATE_IMAGE_BY_EOF_SEARCH;
 
-			return READ_SUCCESS;
+			return increment_cur(s);
 		}
 		else {
 			s->anchor = NULL;
@@ -694,7 +681,8 @@ static int
 state_image_by_content_length (struct mjv_source *s)
 {
 #define BYTES_LEFT_IN_BUF (s->buflast - s->cur)
-#define BYTES_NEEDED ((ptrdiff_t)(s->content_length - s->byte_counter))
+#define BYTES_FOUND  (s->cur - s->anchor + 1)
+#define BYTES_NEEDED ((ptrdiff_t)s->content_length - BYTES_FOUND)
 
 	// If we have a content-length > 0, then trust it; read out
 	// exactly that many bytes before finding the boundary again.
@@ -711,23 +699,21 @@ state_image_by_content_length (struct mjv_source *s)
 			// Report the new frame:
 			got_new_frame(s, s->anchor, s->content_length);
 
-			// Reset per-image variables:
-			reset_frame_variables(s);
-
-			// Release the anchor:
+			// Release anchor, reset content length:
 			s->anchor = NULL;
+			s->content_length = 0;
 
 			// Move to next state, get back to work:
 			s->state = STATE_FIND_BOUNDARY;
-			return READ_SUCCESS;
+			return increment_cur(s);
 		}
 		// Else slice off as much as we can and return for more:
-		s->byte_counter += BYTES_LEFT_IN_BUF;
-		s->cur = s->anchor + s->byte_counter;
+		s->cur += BYTES_LEFT_IN_BUF;
 		return OUT_OF_BYTES;
 	}
 
 #undef BYTES_NEEDED
+#undef BYTES_FOUND
 #undef BYTES_LEFT_IN_BUF
 }
 
@@ -742,9 +728,11 @@ state_image_by_eof_search (struct mjv_source *s)
 		// If we found the EOF marker, export the frame and be done:
 		if (*s->cur == (char)0xd9 && *(s->cur - 1) == (char)0xff) {
 			got_new_frame(s, s->anchor, s->cur - s->anchor + 1);
-			reset_frame_variables(s);
+			s->anchor = NULL;
 			s->state = STATE_FIND_BOUNDARY;
-			return READ_SUCCESS;
+			// s->cur was left on the last byte of the file;
+			// increment it for next stage
+			return increment_cur(s);
 		}
 		// Else increment the current position:
 		if (increment_cur(s) == OUT_OF_BYTES) {
@@ -784,9 +772,9 @@ fetch_header_line (struct mjv_source *s, char **line, unsigned int *line_len)
 		}
 		// Search for \n's; some cameras do not use the \r\n convention,
 		// but plain \n as a line terminator:
-		if (*(s->cur - 1) == 0x0a) {
+		if (*(s->cur - 1) == (char)0x0a) {
 			// If preceded by an 0x0d, count that as a line terminator too:
-			if (LINE_LEN >= 2 && *(s->cur - 2) == 0x0d) {
+			if (LINE_LEN >= 2 && *(s->cur - 2) == (char)0x0d) {
 				*line_len = LINE_LEN - 2;
 			}
 			else {
@@ -798,7 +786,7 @@ fetch_header_line (struct mjv_source *s, char **line, unsigned int *line_len)
 		}
 	}
 	// s->cur is left on the last character PAST the line terminator
-	// (so the first character of the next line)
+	// (the first character of the next line)
 
 #undef LINE_LEN
 }
@@ -895,14 +883,6 @@ interpret_content_type (struct mjv_source *s, char *line, unsigned int line_len)
 
 }
 
-static void
-reset_frame_variables (struct mjv_source *s)
-{
-	s->anchor = NULL;
-	s->byte_counter = 0;
-	s->content_length = 0;
-}
-
 static bool
 got_new_frame (struct mjv_source *s, char *start, unsigned int len)
 {
@@ -910,6 +890,20 @@ got_new_frame (struct mjv_source *s, char *start, unsigned int len)
 
 	DebugEntry();
 
+	// Quick validity check on the frame;
+	// must start with 0xffd8 and end with 0xffd9:
+	if (start[0] != (char)0xff || start[1] != (char)0xd8) {
+		g_printerr("Frame: invalid JPEG SOF signature: %x\n", *start & 0xff);
+	}
+	if (start[len - 2] != (char)0xff || start[len - 1] != (char)0xd9) {
+		g_printerr("%s: invalid JPEG EOF signature\n", s->name);
+		{
+			char *c;
+			for (c = start + len - 20; c < start + len + 20; c++) {
+				if (*c == (char)0xd9) g_printerr("Off by %i??\n", c - (start + len - 1));
+			}
+		}
+	}
 	// Call the callback function, if defined.
 	// The callback function assumes responsibility for the mjv_frame pointer.
 	if (s->got_frame_callback == NULL) {

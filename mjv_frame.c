@@ -81,7 +81,7 @@ mjv_frame_destroy (struct mjv_frame *f)
 }
 
 unsigned char *
-mjv_frame_to_pixmap (struct mjv_frame *f)
+mjv_frame_to_pixbuf (struct mjv_frame *f)
 {
 	unsigned char *pixbuf;
 	struct jpeg_decompress_struct cinfo;

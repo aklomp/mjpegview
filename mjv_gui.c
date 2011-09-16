@@ -18,9 +18,9 @@ struct mjv_darea {
 	guint width;
 	guint height;
 	cairo_t *cairo;
+	GMutex *mutex;
 	GdkPixbuf *pixbuf;
 	GtkWidget *drawing_area;
-	GMutex *pixbuf_mutex;
 	struct mjv_source *source;
 };
 
@@ -35,7 +35,7 @@ mjv_darea_create (struct mjv_source *source)
 	d->height = 240;
 	d->cairo = NULL;
 	d->pixbuf = NULL;
-	d->pixbuf_mutex = g_mutex_new();
+	d->mutex = g_mutex_new();
 	d->drawing_area = gtk_drawing_area_new();
 	d->source = source;
 	gtk_widget_set_size_request(d->drawing_area, d->width, d->height);
@@ -47,7 +47,7 @@ mjv_darea_create (struct mjv_source *source)
 static void
 mjv_darea_destroy (struct mjv_darea *d)
 {
-	g_mutex_free(d->pixbuf_mutex);
+	g_mutex_free(d->mutex);
 	g_object_unref(d->pixbuf);
 	g_free(d);
 }
@@ -113,14 +113,13 @@ darea_expose (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 
 	// TODO: constant creating/destroying of the cairo context
 	// seems wasteful:
+	g_mutex_lock(d->mutex);
 	d->cairo = gdk_cairo_create(widget->window);
 	if (d->pixbuf == NULL) {
 		cairo_set_source_rgb(d->cairo, 0.5, 0.5, 0.5);
 	}
 	else {
-		g_mutex_lock(d->pixbuf_mutex);
 		gdk_cairo_set_source_pixbuf(d->cairo, d->pixbuf, 0, 0);
-		g_mutex_unlock(d->pixbuf_mutex);
 	}
 	cairo_paint(d->cairo);
 
@@ -140,13 +139,8 @@ darea_expose (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 		cairo_text_path(d->cairo, source_name);
 		cairo_fill(d->cairo);
 	}
-
 	cairo_destroy(d->cairo);
-
-//	gdk_draw_rgb_image(widget->window, widget->style->fg_gc[GTK_STATE_NORMAL],
-//		      0, 0, IMAGE_WIDTH, IMAGE_HEIGHT,
-//		      GDK_RGB_DITHER_MAX, rgbbuf, IMAGE_WIDTH * 3);
-//
+	g_mutex_unlock(d->mutex);
 	return TRUE;
 }
 
@@ -171,8 +165,7 @@ mjv_gui_show_frame (struct mjv_source *s, struct mjv_frame *frame)
 		mjv_frame_destroy(frame);
 		return;
 	}
-	// Get height and width of this frame:
-	guint width = mjv_frame_get_width(frame);
+	guint width  = mjv_frame_get_width(frame);
 	guint height = mjv_frame_get_height(frame);
 
 	assert(width  > 0);
@@ -188,6 +181,8 @@ mjv_gui_show_frame (struct mjv_source *s, struct mjv_frame *frame)
 	// Assert that we found a darea:
 	g_assert(link != NULL);
 
+	g_mutex_lock(MJV_DAREA(link)->mutex);
+
 	// Adjust size of darea to frame if different from previous:
 	if (height != MJV_DAREA(link)->height || width != MJV_DAREA(link)->width) {
 		gtk_widget_set_size_request(MJV_DAREA(link)->drawing_area, width, height);
@@ -195,10 +190,6 @@ mjv_gui_show_frame (struct mjv_source *s, struct mjv_frame *frame)
 		MJV_DAREA(link)->height = height;
 	}
 //	pixmap_to_disabled( pixmap, height * width );
-
-	// Lock pixbuf, so that we don't enter a race condition with the
-	// expose-event handler
-	g_mutex_lock(MJV_DAREA(link)->pixbuf_mutex);
 
 	// Remove reference to existing pixmap if exists:
 	if (MJV_DAREA(link)->pixbuf != NULL) {
@@ -216,18 +207,12 @@ mjv_gui_show_frame (struct mjv_source *s, struct mjv_frame *frame)
 		, destroy_pixels	// destroy function for pixel data
 		, NULL			// user argument to the above
 		) ;
-	g_mutex_unlock(MJV_DAREA(link)->pixbuf_mutex);
+	g_mutex_unlock(MJV_DAREA(link)->mutex);
 
 	// FIXME use bit depth from frame, etc:
 	gdk_threads_enter();
 	gdk_window_invalidate_rect(MJV_DAREA(link)->drawing_area->window, NULL, FALSE);
 	gdk_threads_leave();
-
-//	gdk_draw_rgb_image(MJV_DAREA(link)->drawing_area->window, MJV_DAREA(link)->drawing_area->style->fg_gc[GTK_STATE_NORMAL],
-//		      0, 0,
-//		      width,
-//		      height,
-//		      GDK_RGB_DITHER_MAX, pixels, width * 3);
 
 	// Frame is no longer needed, and we took responsibility for it:
 	mjv_frame_destroy(frame);

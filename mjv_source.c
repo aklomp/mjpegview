@@ -11,6 +11,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>	// hints
+#include <time.h>	// clock_gettime()
 #include <sys/select.h>
 #include <arpa/inet.h>
 #include <assert.h>
@@ -25,6 +26,13 @@
 // The string length of a constant character array is one less
 // than its apparent size, because of the zero terminator:
 #define STR_LEN(x)	(sizeof(x) - 1)
+
+// The number of bytes between the anchor and the cur pointer,
+// inclusive:
+#define LINE_LEN	(s->cur - s->anchor + 1)
+
+// Compare the 16-bit value at a certain location with a constant:
+#define VALUE_AT(x,y)	(*((guint16 *)(x)) == GUINT16_FROM_BE(y))
 
 // Debug print functions:
 #if 0
@@ -59,11 +67,6 @@ static unsigned int last_id = 0;
 struct mjv_source {
 	int fd;
 	char *name;		// pretty name for this camera
-	char *buf;		// read buffer;
-	char *cur;		// current char under inspection in buffer;
-	char *head;		// where the current read starts;
-	char *buflast;		// first char in buffer past the end;
-	char *anchor;		// marks the start of a token;
 	int nread;		// return value of read();
 	int mimetype;
 	int state;		// state machine state
@@ -72,7 +75,14 @@ struct mjv_source {
 	unsigned int boundary_len;
 	unsigned int response_code;
 	unsigned int content_length;
+	unsigned int delay_usec;
+	struct timespec last_emitted;
 	struct mjv_framebuf *framebuf;
+
+	char *buf;	// read buffer;
+	char *cur;	// current char under inspection in buffer;
+	char *head;	// where the current read starts;
+	char *anchor;	// the first byte in the buffer to keep;
 
 	// This callback function is called whenever
 	// a mjv_frame object is created by a source:
@@ -86,6 +96,7 @@ static inline bool is_numeric (char);
 static inline unsigned int simple_atoi (const char *, const char *);
 static int interpret_content_type (struct mjv_source *, char *, unsigned int);
 static bool got_new_frame (struct mjv_source *, char *, unsigned int);
+static void artificial_delay (unsigned int, struct timespec *);
 
 static int state_http_banner (struct mjv_source *);
 static int state_http_header (struct mjv_source *);
@@ -168,7 +179,7 @@ err:	if (base64_auth_string != NULL) {
 }
 
 struct mjv_source *
-mjv_source_create_from_file (const char *filename, void (*got_frame_callback)(struct mjv_source*, struct mjv_frame*))
+mjv_source_create_from_file (const char *filename, unsigned int delay_usec, void (*got_frame_callback)(struct mjv_source*, struct mjv_frame*))
 {
 	struct mjv_source *s;
 
@@ -180,6 +191,7 @@ mjv_source_create_from_file (const char *filename, void (*got_frame_callback)(st
 		mjv_source_destroy(s);
 		return NULL;
 	}
+	s->delay_usec = delay_usec;
 	return s;
 }
 
@@ -267,21 +279,24 @@ mjv_source_create (void (*got_frame_callback)(struct mjv_source*, struct mjv_fra
 	if ((s = malloc(sizeof(*s))) == NULL) {
 		goto err;
 	}
-	// Allocate memory for the read buffer:
 	if ((s->buf = malloc(BUF_SIZE)) == NULL) {
 		goto err;
 	}
 	// Set default values:
 	s->fd = -1;
 	s->id = ++last_id;	// First created camera has id #1
-	s->anchor = NULL;
 	s->boundary = NULL;
 	s->framebuf = NULL;
 	s->mimetype = -1;
 	s->content_length = 0;
+	s->delay_usec = 0;
 	s->state = STATE_HTTP_BANNER;
-	s->head = s->buflast = s->cur = s->buf;
 	s->got_frame_callback = got_frame_callback;
+	s->last_emitted.tv_sec = 0;
+	s->last_emitted.tv_nsec = 0;
+
+	s->anchor = NULL;
+	s->cur = s->head = s->buf;
 
 	// Set a default name based on the ID:
 	if ((s->name = malloc(15)) == NULL) {
@@ -357,6 +372,36 @@ mjv_source_get_id (const struct mjv_source *const s)
 	return s->id;
 }
 
+static void
+adjust_streambuf (struct mjv_source *s)
+{
+	// Cheap test: if anchored at start of buffer, nothing to do:
+	if (s->anchor == s->buf) {
+		return;
+	}
+	// First byte to keep is either the byte at the anchor,
+	// or the byte at cur:
+	char *keepfrom = (s->anchor == NULL) ? s->cur : s->anchor;
+
+	// How much bytes at the start to shift over:
+	unsigned int offset = keepfrom - s->buf;
+
+	// How much bytes left from keep till end?
+	unsigned int good_bytes = s->head - keepfrom;
+
+	// If important bytes left in buffer at an offset, move them:
+	if (good_bytes > 0 && offset > 0) {
+		memmove(s->buf, keepfrom, good_bytes);
+		s->cur -= offset;
+		s->head -= offset;
+		s->anchor -= offset;
+	}
+	// Else if no anchor, reset to start of buffer:
+	else if (s->anchor == NULL) {
+		s->cur = s->head = s->buf;
+	}
+}
+
 void
 mjv_source_capture (struct mjv_source *s)
 {
@@ -408,8 +453,8 @@ get_bytes:
 				// End of file:
 				return;
 			}
-			// buflast is ONE PAST the real last char:
-			s->buflast = s->head + s->nread;
+			// buflast is always ONE PAST the real last char:
+			s->head += s->nread;
 
 			Debug("Read %u bytes\n", s->nread);
 
@@ -423,32 +468,7 @@ get_bytes:
 					}
 					case OUT_OF_BYTES: {
 						// Need to read more bytes from the source.
-
-						// If an anchor is defined, then all the data from that point forward
-						// should be conserved. So we move the end of the buffer to the start.
-						// (This is probably quite inefficient.)
-						if (s->anchor != NULL) {
-							// Only move if dest and source differ, e.g. the anchor is not
-							// already at the start of the buf:
-							if (s->anchor != s->buf) {
-								memmove(s->buf, s->anchor, s->buflast - s->anchor);
-							}
-							s->head = s->buf + (s->buflast - s->anchor);
-							s->cur  = s->buf + (s->buflast - s->anchor) - 1;
-							s->anchor = s->buf;
-						}
-						// Else if we have no anchor and consumed all bytes in the buffer, start
-						// over at the beginning:
-						else if (s->cur >= s->buflast) {
-							s->cur = s->head = s->buf;
-						}
-						// Otherwise move all bytes that were still available past s->cur to the
-						// front, and append the next ones behind them:
-						else {
-							memmove(s->buf, s->cur, s->buflast - s->cur);
-							s->head = s->buf + (s->buflast - s->cur);
-							s->cur = s->buf;
-						}
+						adjust_streambuf(s);
 						goto get_bytes;
 					}
 					case READ_ERROR: {
@@ -508,7 +528,7 @@ state_http_banner (struct mjv_source *s)
 		return READ_ERROR;
 	}
 	s->state = STATE_HTTP_HEADER;
-	return READ_SUCCESS;
+	return increment_cur(s);
 }
 
 static int
@@ -535,6 +555,8 @@ state_http_header (struct mjv_source *s)
 			s->state = STATE_FIND_BOUNDARY;
 			break;
 		}
+//		write(1, line, line_len);
+//		write(1, "<\n", 2);
 #define STRING_MATCH(x)	(line_len >= STR_LEN(x) && strncmp(line, x, STR_LEN(x)) == 0)
 		if (STRING_MATCH(header_content_type_one)
 		 || STRING_MATCH(header_content_type_two)) {
@@ -542,9 +564,12 @@ state_http_header (struct mjv_source *s)
 				return ret;
 			}
 		}
+		if (increment_cur(s) == OUT_OF_BYTES) {
+			return OUT_OF_BYTES;
+		}
 #undef STRING_MATCH
 	}
-	return READ_SUCCESS;
+	return increment_cur(s);
 }
 
 static int
@@ -565,20 +590,20 @@ state_find_boundary (struct mjv_source *s)
 		else {
 			// Complete boundary not yet found, and we have a non-matching character;
 			// restart the scan:
-			if ((s->cur - s->anchor) + 1 < (ptrdiff_t)s->boundary_len && *s->cur != s->boundary[s->cur - s->anchor]) {
+			if (LINE_LEN <= (ptrdiff_t)s->boundary_len && *s->cur != s->boundary[s->cur - s->anchor]) {
 				s->cur = s->anchor + 1;
 				s->anchor = NULL;
 			}
 			// If successfully found boundary plus one byte, and that byte is \n, then success:
-			if ((s->cur - s->anchor) + 1 == (ptrdiff_t)s->boundary_len + 2 && *(s->cur - 1) == 0x0a) {
+			if (LINE_LEN == (ptrdiff_t)s->boundary_len + 1 && *s->cur == (char)0x0a) {
 				s->anchor = NULL;
 				s->state = STATE_HTTP_SUBHEADER;
 				break;
 			}
 			// If successfully found boundary plus two bytes...
-			if ((s->cur - s->anchor) + 1 == (ptrdiff_t)s->boundary_len + 3) {
+			if (LINE_LEN == (ptrdiff_t)s->boundary_len + 2) {
 				// ..and those two bytes are \r\n, then success...
-				if (*(s->cur - 1) == 0x0a && *(s->cur - 2) == 0x0d) {
+				if (VALUE_AT(s->cur - 1, 0x0d0a)) {
 					s->anchor = NULL;
 					s->content_length = 0;
 					s->state = STATE_HTTP_SUBHEADER;
@@ -642,10 +667,13 @@ state_http_subheader (struct mjv_source *s)
 				s->content_length = simple_atoi(num_start, num_end);
 			}
 		}
+		if (increment_cur(s) == OUT_OF_BYTES) {
+			return OUT_OF_BYTES;
+		}
 #undef STRING_MATCH
 	}
 	s->state = STATE_FIND_IMAGE;
-	return READ_SUCCESS;
+	return increment_cur(s);
 }
 
 static int
@@ -666,7 +694,14 @@ state_find_image (struct mjv_source *s)
 				? STATE_IMAGE_BY_CONTENT_LENGTH
 				: STATE_IMAGE_BY_EOF_SEARCH;
 
-			return increment_cur(s);
+			// Check that the whole of the image can fit in the buffer.
+			// FIXME: do something nicer:
+			if (s->content_length > BUF_SIZE) {
+				g_printerr("Content length larger than read buffer; frame won't fit\n");
+				g_printerr("Skipping frame, sorry.\n");
+				s->state = STATE_FIND_BOUNDARY;
+			}
+			break;
 		}
 		else {
 			s->anchor = NULL;
@@ -675,14 +710,15 @@ state_find_image (struct mjv_source *s)
 			return OUT_OF_BYTES;
 		}
 	}
+	return increment_cur(s);
 }
 
 static int
 state_image_by_content_length (struct mjv_source *s)
 {
-#define BYTES_LEFT_IN_BUF (s->buflast - s->cur)
+#define BYTES_LEFT_IN_BUF (s->head - s->cur)
 #define BYTES_FOUND  (s->cur - s->anchor + 1)
-#define BYTES_NEEDED ((ptrdiff_t)s->content_length - BYTES_FOUND)
+#define BYTES_NEEDED ((ptrdiff_t) s->content_length - BYTES_FOUND)
 
 	// If we have a content-length > 0, then trust it; read out
 	// exactly that many bytes before finding the boundary again.
@@ -693,8 +729,8 @@ state_image_by_content_length (struct mjv_source *s)
 		// we have our image:
 		if (BYTES_LEFT_IN_BUF >= BYTES_NEEDED)
 		{
-			// Skip pointer ahead to end of image:
-			s->cur = s->anchor + s->content_length;
+			// Skip pointer ahead to last byte of image:
+			s->cur = s->anchor + s->content_length - 1;
 
 			// Report the new frame:
 			got_new_frame(s, s->anchor, s->content_length);
@@ -705,12 +741,13 @@ state_image_by_content_length (struct mjv_source *s)
 
 			// Move to next state, get back to work:
 			s->state = STATE_FIND_BOUNDARY;
-			return increment_cur(s);
+			break;
 		}
 		// Else slice off as much as we can and return for more:
-		s->cur += BYTES_LEFT_IN_BUF;
+		s->cur = s->head;
 		return OUT_OF_BYTES;
 	}
+	return increment_cur(s);
 
 #undef BYTES_NEEDED
 #undef BYTES_FOUND
@@ -726,15 +763,12 @@ state_image_by_eof_search (struct mjv_source *s)
 	for (;;)
 	{
 		// If we found the EOF marker, export the frame and be done:
-		if (*s->cur == (char)0xd9 && *(s->cur - 1) == (char)0xff) {
+		if (VALUE_AT(s->cur - 1, 0xffd9)) {
 			got_new_frame(s, s->anchor, s->cur - s->anchor + 1);
 			s->anchor = NULL;
 			s->state = STATE_FIND_BOUNDARY;
-			// s->cur was left on the last byte of the file;
-			// increment it for next stage
 			return increment_cur(s);
 		}
-		// Else increment the current position:
 		if (increment_cur(s) == OUT_OF_BYTES) {
 			return OUT_OF_BYTES;
 		}
@@ -751,7 +785,7 @@ static inline int
 increment_cur (struct mjv_source *s)
 {
 	s->cur++;
-	return (s->cur >= s->buflast) ? OUT_OF_BYTES : READ_SUCCESS;
+	return (s->cur >= s->head) ? OUT_OF_BYTES : READ_SUCCESS;
 }
 
 static int
@@ -759,22 +793,16 @@ fetch_header_line (struct mjv_source *s, char **line, unsigned int *line_len)
 {
 	// Assume s->cur is on the first character of the line
 	// Consume buffer until we hit a line terminator:
-
-#define LINE_LEN (s->cur - s->anchor)
-
 	if (s->anchor == NULL) {
 		s->anchor = s->cur;
 	}
 	for (;;)
 	{
-		if (increment_cur(s) == OUT_OF_BYTES) {
-			return OUT_OF_BYTES;
-		}
 		// Search for \n's; some cameras do not use the \r\n convention,
 		// but plain \n as a line terminator:
-		if (*(s->cur - 1) == (char)0x0a) {
+		if (*s->cur == (char)0x0a) {
 			// If preceded by an 0x0d, count that as a line terminator too:
-			if (LINE_LEN >= 2 && *(s->cur - 2) == (char)0x0d) {
+			if (LINE_LEN >= 2 && *(s->cur - 1) == (char)0x0d) {
 				*line_len = LINE_LEN - 2;
 			}
 			else {
@@ -782,13 +810,15 @@ fetch_header_line (struct mjv_source *s, char **line, unsigned int *line_len)
 			}
 			*line = s->anchor;
 			s->anchor = NULL;
+		//	write( 1, ">", 1 );
+		//	write( 1, *line, *line_len );
+		//	write( 1, "<\n", 2 );
 			return READ_SUCCESS;
 		}
+		if (increment_cur(s) == OUT_OF_BYTES) {
+			return OUT_OF_BYTES;
+		}
 	}
-	// s->cur is left on the last character PAST the line terminator
-	// (the first character of the next line)
-
-#undef LINE_LEN
 }
 
 static inline unsigned int
@@ -892,31 +922,66 @@ got_new_frame (struct mjv_source *s, char *start, unsigned int len)
 
 	// Quick validity check on the frame;
 	// must start with 0xffd8 and end with 0xffd9:
-	if (start[0] != (char)0xff || start[1] != (char)0xd8) {
-		g_printerr("Frame: invalid JPEG SOF signature: %x\n", *start & 0xff);
+	if (!VALUE_AT(start, 0xffd8)) {
+		g_printerr("Invalid start marker!\n");
 	}
-	if (start[len - 2] != (char)0xff || start[len - 1] != (char)0xd9) {
+	if (!VALUE_AT(start + len - 2, 0xffd9)) {
 		g_printerr("%s: invalid JPEG EOF signature\n", s->name);
 		{
 			char *c;
 			for (c = start + len - 20; c < start + len + 20; c++) {
-				if (*c == (char)0xd9) g_printerr("Off by %i??\n", c - (start + len - 1));
+				if (VALUE_AT(c, 0xffd9)) g_printerr("Off by %i??\n", c - (start + len - 2));
 			}
 		}
 	}
-	// Call the callback function, if defined.
-	// The callback function assumes responsibility for the mjv_frame pointer.
+	if (s->delay_usec > 0) {
+		artificial_delay(s->delay_usec, &s->last_emitted);
+	}
 	if (s->got_frame_callback == NULL) {
 		Debug("No callback defined for frame\n");
 		return false;
 	}
-	// Create mjv_frame object:
 	if ((frame = mjv_frame_create(start, len)) == NULL) {
 		Debug("Could not create frame\n");
 		return false;
 	}
-	// Call the callback function:
 	s->got_frame_callback(s, frame);
 
 	return true;
+}
+
+static void
+artificial_delay (unsigned int delay_usec, struct timespec *last)
+{
+	struct timespec now;
+	unsigned long delay_sec;
+	unsigned long delay_nsec;
+
+	DebugEntry();
+
+	if (delay_usec < 1000000) {
+		delay_sec = 0;
+		delay_nsec = delay_usec * 1000;
+	}
+	else {
+		delay_sec = delay_usec / 1000000;
+		delay_nsec = (delay_usec % 1000000) * 1000;
+	}
+	clock_gettime(CLOCK_REALTIME, &now);
+
+	// Need a nonzero previous timestamp to time against:
+	if (last->tv_sec > 0)
+	{
+		// Calculate scheduled awakening:
+		now.tv_sec  = last->tv_sec  + delay_sec;
+		now.tv_nsec = last->tv_nsec + delay_nsec;
+		if (now.tv_nsec >= 1000000000) {
+			now.tv_sec++;
+			now.tv_nsec -= 1000000000;
+		}
+		// Keep sleeping across interrupts until the now has come to pass:
+		while (clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &now, NULL) != 0);
+	}
+	// Update the last emission time to the now:
+	memcpy(last, &now, sizeof(struct timespec));
 }

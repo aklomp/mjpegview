@@ -7,6 +7,7 @@
 #include <glib.h>
 #include <assert.h>
 #include <jerror.h>
+#include <setjmp.h>
 
 const char *err_malloc  = "Memory allocation failed";
 const char *err_unknown = "Unknown error";
@@ -21,6 +22,11 @@ struct mjv_frame {
 	unsigned int row_stride;
 	unsigned int components;
 	unsigned int successfully_decoded;
+};
+
+struct my_jpeg_error_mgr {
+	struct jpeg_error_mgr pub;
+	jmp_buf setjmp_buffer;
 };
 
 struct mjv_frame *
@@ -63,6 +69,7 @@ mjv_frame_create (char *rawbits, unsigned int num_rawbits)
 	return f;
 
 err:	if (f != NULL) {
+		free(f->error);
 		free(f->rawbits);
 		free(f->timestamp);
 		free(f);
@@ -74,10 +81,19 @@ void
 mjv_frame_destroy (struct mjv_frame *f)
 {
 	if (f != NULL) {
+		free(f->error);
 		free(f->rawbits);
 		free(f->timestamp);
 		free(f);
 	}
+}
+
+// Trivial callback function when libjpeg encounters an error:
+static void
+on_jpeg_error (j_common_ptr cinfo)
+{
+	// Jump back to original function:
+	longjmp(((struct my_jpeg_error_mgr *)(cinfo->err))->setjmp_buffer, 1);
 }
 
 unsigned char *
@@ -85,7 +101,7 @@ mjv_frame_to_pixbuf (struct mjv_frame *f)
 {
 	unsigned char *pixbuf;
 	struct jpeg_decompress_struct cinfo;
-	struct jpeg_error_mgr jerr;
+	struct my_jpeg_error_mgr jerr;
 	JSAMPROW row_pointer;
 
 	// Given a mjv_frame, returns a pixmap and sets some of the feame's
@@ -95,8 +111,19 @@ mjv_frame_to_pixbuf (struct mjv_frame *f)
 
 	assert(f != NULL);
 
-	cinfo.err = jpeg_std_error(&jerr);
-
+	// Use a custom error exit; libjpeg just calls exit()
+	cinfo.err = jpeg_std_error( &jerr.pub );
+	jerr.pub.error_exit = on_jpeg_error;
+	if (setjmp(jerr.setjmp_buffer)) {
+		char jpeg_errmsg[JMSG_LENGTH_MAX];
+		jerr.pub.format_message((j_common_ptr)(&cinfo), jpeg_errmsg);
+		size_t len = strlen(jpeg_errmsg) + 1;
+		f->error = g_realloc(f->error, len);
+		memcpy(f->error, jpeg_errmsg, len);
+		jpeg_destroy_decompress(&cinfo);
+		f->successfully_decoded = 0;
+		return NULL;
+	}
 	jpeg_create_decompress(&cinfo);
 
 	// Note: this source is available from libjpeg v8 onwards:

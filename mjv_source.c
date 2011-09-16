@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <netdb.h>	// hints
 #include <time.h>	// clock_gettime()
+#include <unistd.h>	// open(), write(), close()
 #include <sys/select.h>
 #include <arpa/inet.h>
 #include <assert.h>

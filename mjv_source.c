@@ -6,6 +6,7 @@
 #include <stdlib.h>	// malloc(), free()
 #include <string.h>	// strncmp(), memcpy()
 #include <glib.h>
+#include <glib/gprintf.h>
 #include <stdio.h>	// snprintf()
 #include <errno.h>
 #include <sys/types.h>
@@ -77,6 +78,7 @@ struct mjv_source {
 	unsigned int response_code;
 	unsigned int content_length;
 	unsigned int delay_usec;
+	unsigned int loop_terminate;
 	struct timespec last_emitted;
 	struct mjv_framebuf *framebuf;
 
@@ -291,6 +293,7 @@ mjv_source_create (void (*got_frame_callback)(struct mjv_source*, struct mjv_fra
 	s->mimetype = -1;
 	s->content_length = 0;
 	s->delay_usec = 0;
+	s->loop_terminate = 0;
 	s->state = STATE_HTTP_BANNER;
 	s->got_frame_callback = got_frame_callback;
 	s->last_emitted.tv_sec = 0;
@@ -330,7 +333,10 @@ mjv_source_destroy (struct mjv_source *s)
 	if (s->fd >= 0 && close(s->fd) < 0) {
 		Debug("%s\n", g_strerror(errno));
 	}
-	free(s->name);
+	if (s->name != NULL) {
+		g_printf("Destroying source %s\n", s->name);
+		free(s->name);
+	}
 	free(s->boundary);
 	if (s->framebuf != NULL) {
 		mjv_framebuf_destroy(s->framebuf);
@@ -359,6 +365,17 @@ mjv_source_set_name (struct mjv_source *const s, const char *const name)
 	return 1;
 }
 
+void
+mjv_source_set_terminate (struct mjv_source *const s)
+{
+	// This will cause the main loop to exit:
+	// FIXME: this is a piss-poor way to tell this capture thread to stop.
+	// If the thread is waiting in pselect(), it won't exit till it hits
+	// the timeout. We should redo this with signals.
+	g_assert(s != NULL);
+	s->loop_terminate = 1;
+}
+
 const char *
 mjv_source_get_name (const struct mjv_source *const s)
 {
@@ -383,11 +400,15 @@ adjust_streambuf (struct mjv_source *s)
 	// First byte to keep is either the byte at the anchor,
 	// or the byte at cur:
 	char *keepfrom = (s->anchor == NULL) ? s->cur : s->anchor;
+	g_assert(keepfrom != NULL);
 
 	// How much bytes at the start to shift over:
+	g_assert(s->buf != NULL);
+	g_assert(s->buf <= keepfrom);
 	unsigned int offset = keepfrom - s->buf;
 
 	// How much bytes left from keep till end?
+	g_assert(s->head >= keepfrom);
 	unsigned int good_bytes = s->head - keepfrom;
 
 	// If important bytes left in buffer at an offset, move them:
@@ -424,7 +445,7 @@ mjv_source_capture (struct mjv_source *s)
 
 get_bytes:
 
-	for (;;)
+	while (s->loop_terminate == 0)
 	{
 		FD_ZERO(&fdset);
 		FD_SET(s->fd, &fdset);

@@ -26,6 +26,8 @@ struct mjv_darea {
 
 static struct mjv_darea *mjv_darea_create (struct mjv_source *);
 
+static void capture_thread (struct mjv_source *);
+
 static struct mjv_darea *
 mjv_darea_create (struct mjv_source *source)
 {
@@ -43,7 +45,6 @@ mjv_darea_create (struct mjv_source *source)
 	return d;
 }
 
-#if 0
 static void
 mjv_darea_destroy (struct mjv_darea *d)
 {
@@ -51,7 +52,6 @@ mjv_darea_destroy (struct mjv_darea *d)
 	g_object_unref(d->pixbuf);
 	g_free(d);
 }
-#endif
 
 static void
 on_destroy (void)
@@ -66,6 +66,9 @@ mjv_gui_main (int argc, char **argv, GList *sources)
 	GError *error = NULL;
 	GList *link = NULL;
 
+	if (!g_thread_supported()) {
+		g_thread_init(NULL);
+	}
 	gdk_threads_init();
 	gtk_init(&argc, &argv);
 
@@ -91,7 +94,7 @@ mjv_gui_main (int argc, char **argv, GList *sources)
 
 	// Create camera threads:
 	for (link = g_list_first(sources); link; link = g_list_next(link)) {
-		if (!g_thread_create((GThreadFunc)mjv_source_capture, link->data, FALSE, &error)) {
+		if (!g_thread_create((GThreadFunc)capture_thread, link->data, FALSE, &error)) {
 			g_printerr("%s\n", error->message);
 			return 1;
 		}
@@ -100,9 +103,24 @@ mjv_gui_main (int argc, char **argv, GList *sources)
 	gdk_threads_enter();
 	gtk_main();
 	gdk_threads_leave();
+
+	// Terminate all threads:
+	// FIXME: this does nothing when the thread is waiting in pselect().
+	for ( link = g_list_first( sources ); link != NULL; link = g_list_next( link ) ) {
+		mjv_source_set_terminate( MJV_SOURCE( link ) );
+	}
+	g_list_free_full(darea_list, (GDestroyNotify)(mjv_darea_destroy));
+
 	return 0;
 }
 
+static void
+capture_thread (struct mjv_source *s)
+{
+	// This is the capture thread.
+	mjv_source_capture(s);
+	g_thread_exit(0);
+}
 
 static gboolean
 darea_expose (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
@@ -211,7 +229,7 @@ mjv_gui_show_frame (struct mjv_source *s, struct mjv_frame *frame)
 
 	// FIXME use bit depth from frame, etc:
 	gdk_threads_enter();
-	gdk_window_invalidate_rect(MJV_DAREA(link)->drawing_area->window, NULL, FALSE);
+	gtk_widget_queue_draw(MJV_DAREA(link)->drawing_area);
 	gdk_threads_leave();
 
 	// Frame is no longer needed, and we took responsibility for it:

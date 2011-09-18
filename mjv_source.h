@@ -11,3 +11,4 @@ const char *mjv_source_get_name (const struct mjv_source const *);
 
 // setters
 unsigned int mjv_source_set_name (struct mjv_source *const, const char *const name);
+void mjv_source_set_terminate (struct mjv_source *const);

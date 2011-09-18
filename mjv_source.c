@@ -114,8 +114,6 @@ write_http_request (const int fd, const char *path, const char *username, const 
 {
 	char *auth_string = NULL;
 	gchar *base64_auth_string = NULL;
-	unsigned int username_len = strlen(username);
-	unsigned int password_len = strlen(password);
 	char crlf[] = "\r\n";
 	char get_request[] = "GET ";
 	char http_signature[] = " HTTP/1.0";
@@ -135,6 +133,9 @@ write_http_request (const int fd, const char *path, const char *username, const 
 
 	DebugEntry();
 
+	unsigned int username_len = (username == NULL) ? 0 : strlen(username);
+	unsigned int password_len = (password == NULL) ? 0 : strlen(password);
+
 	// Make HTTP request:
 	SAFE_WRITE_STR(get_request);
 	SAFE_WRITE(path, strlen(path));
@@ -144,7 +145,7 @@ write_http_request (const int fd, const char *path, const char *username, const 
 	SAFE_WRITE_STR(crlf);
 
 	// Add basic authentication header if credentials passed:
-	if (username_len > 0 || password_len > 0)
+	if (username != NULL && password != NULL)
 	{
 		// The auth string is 'username:password':
 		if ((auth_string = malloc(username_len + password_len + 1)) == NULL) {
@@ -214,6 +215,12 @@ mjv_source_create_from_network (const char *host, const unsigned int port, const
 	if ((s = mjv_source_create(got_frame_callback)) == NULL) {
 		return NULL;
 	}
+	Debug("host: %s\n", host);
+	Debug("port: %i\n", port);
+	Debug("path: %s\n", path);
+	Debug("user: %s\n", username);
+	Debug("pass: %s\n", password);
+
 	memset(&hints, 0, sizeof(struct addrinfo));
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;

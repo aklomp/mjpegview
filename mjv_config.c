@@ -147,6 +147,9 @@ mjv_config_get_sources (struct mjv_config *c)
 		config_setting_lookup_string(source, "user", &user);
 		config_setting_lookup_string(source, "pass", &pass);
 
+		// TODO check for mandatory objects
+		// TODO add support for files
+
 		if ((mjv_config_source = mjv_config_source_create(name, host, path, user, pass, port)) == NULL) {
 			// TODO real error handling
 			g_printerr("Could not create object!\n");

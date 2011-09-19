@@ -407,16 +407,17 @@ adjust_streambuf (struct mjv_source *s)
 	// First byte to keep is either the byte at the anchor,
 	// or the byte at cur:
 	char *keepfrom = (s->anchor == NULL) ? s->cur : s->anchor;
-	g_assert(keepfrom != NULL);
 
 	// How much bytes at the start to shift over:
-	g_assert(s->buf != NULL);
-	g_assert(s->buf <= keepfrom);
 	unsigned int offset = keepfrom - s->buf;
 
 	// How much bytes left from keep till end?
-	g_assert(s->head >= keepfrom);
 	unsigned int good_bytes = s->head - keepfrom;
+
+	g_assert(s->buf != NULL);
+	g_assert(keepfrom != NULL);
+	g_assert(s->buf <= keepfrom);
+	g_assert(s->head >= keepfrom);
 
 	// If important bytes left in buffer at an offset, move them:
 	if (good_bytes > 0 && offset > 0) {
@@ -745,9 +746,13 @@ state_find_image (struct mjv_source *s)
 static int
 state_image_by_content_length (struct mjv_source *s)
 {
-#define BYTES_LEFT_IN_BUF (s->head - s->cur)
+#define BYTES_LEFT_IN_BUF (s->head - s->cur - 1)
 #define BYTES_FOUND  (s->cur - s->anchor + 1)
-#define BYTES_NEEDED ((ptrdiff_t) s->content_length - BYTES_FOUND)
+#define BYTES_NEEDED ((ptrdiff_t)s->content_length - BYTES_FOUND)
+
+	g_assert(BYTES_LEFT_IN_BUF >= 0);
+	g_assert(BYTES_FOUND >= 0);
+	g_assert(BYTES_NEEDED >= 0);
 
 	// If we have a content-length > 0, then trust it; read out
 	// exactly that many bytes before finding the boundary again.

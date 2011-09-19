@@ -49,7 +49,9 @@ static void
 mjv_darea_destroy (struct mjv_darea *d)
 {
 	g_mutex_free(d->mutex);
-	g_object_unref(d->pixbuf);
+	if (d->pixbuf != NULL) {
+		g_object_unref(d->pixbuf);
+	}
 	g_free(d);
 }
 

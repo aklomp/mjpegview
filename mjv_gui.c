@@ -26,6 +26,7 @@ struct mjv_darea {
 
 static struct mjv_darea *mjv_darea_create (struct mjv_source *);
 
+static void widget_force_size (GtkWidget *, guint, guint);
 static void capture_thread (struct mjv_source *);
 
 static struct mjv_darea *
@@ -203,12 +204,10 @@ mjv_gui_show_frame (struct mjv_source *s, struct mjv_frame *frame)
 
 	g_mutex_lock(MJV_DAREA(link)->mutex);
 
-	// Adjust size of darea to frame if different from previous:
-	if (height != MJV_DAREA(link)->height || width != MJV_DAREA(link)->width) {
-		gtk_widget_set_size_request(MJV_DAREA(link)->drawing_area, width, height);
-		MJV_DAREA(link)->width = width;
-		MJV_DAREA(link)->height = height;
-	}
+	MJV_DAREA(link)->width = width;
+	MJV_DAREA(link)->height = height;
+	widget_force_size(MJV_DAREA(link)->drawing_area, height, width);
+
 //	pixmap_to_disabled( pixmap, height * width );
 
 	// Remove reference to existing pixmap if exists:
@@ -237,6 +236,15 @@ mjv_gui_show_frame (struct mjv_source *s, struct mjv_frame *frame)
 	// Frame is no longer needed, and we took responsibility for it:
 	mjv_frame_destroy(frame);
 	return;
+}
+
+static void
+widget_force_size (GtkWidget *widget, guint height, guint width)
+{
+	// This function is not thread safe; caller must have called g_thread_enter()
+	if (height != (guint)widget->allocation.height || width != (guint)widget->allocation.width) {
+		gtk_widget_set_size_request(widget, width, height);
+	}
 }
 
 #if 0

@@ -24,7 +24,7 @@ on_destroy (void)
 
 // TODO GList is overkill, use GArray or GSList something
 int
-mjv_gui_main (int argc, char **argv, GList *sources)
+mjv_gui_main (int argc, char **argv, GList *sources_list)
 {
 	GList *link = NULL;
 
@@ -38,7 +38,7 @@ mjv_gui_main (int argc, char **argv, GList *sources)
 	gtk_window_set_title(GTK_WINDOW(win), "mjpegview");
 
 	// For each source, create a mjv_thread object, which we can run a little bit later on:
-	for (link = g_list_first(sources); link; link = g_list_next(link))
+	for (link = g_list_first(sources_list); link; link = g_list_next(link))
 	{
 		struct mjv_source *source = MJV_SOURCE(link);
 		struct mjv_thread *thread = mjv_thread_create(source);

@@ -1,7 +1,8 @@
 struct mjv_source;
+struct mjv_config_source;
 
-struct mjv_source *mjv_source_create_from_file (const char *, unsigned int);
-struct mjv_source *mjv_source_create_from_network (const char *, const unsigned int, const char *, const char *, const char *);
+struct mjv_source *mjv_source_create (struct mjv_config_source *);
+bool mjv_source_open (struct mjv_source *);
 void mjv_source_capture (struct mjv_source *);
 void mjv_source_destroy (struct mjv_source *);
 

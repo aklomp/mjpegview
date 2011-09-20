@@ -69,7 +69,7 @@ canvas_repaint (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 	t->cairo = gdk_cairo_create(widget->window);
 
 	if (t->pixbuf == NULL) {
-		cairo_set_source_rgb(t->cairo, 0.5, 0.5, 0.5);
+		cairo_set_source_rgb(t->cairo, 0.1, 0.1, 0.1);
 	}
 	else {
 		gdk_cairo_set_source_pixbuf(t->cairo, t->pixbuf, 0, 0);
@@ -80,7 +80,7 @@ canvas_repaint (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 		print_source_name(t->cairo, source_name);
 	}
 	if (t->spinner.active == 1) {
-		draw_spinner(t->cairo, t->width / 2, t->height / 2, t->spinner.step);
+		draw_spinner(t->cairo, widget->allocation.width / 2, widget->allocation.height / 2, t->spinner.step);
 	}
 	cairo_destroy(t->cairo);
 	g_mutex_unlock(t->mutex);
@@ -212,9 +212,15 @@ thread_main (void *user_data)
 	// statement to be the only cancellation point that qualifies.
 	// The thread will then only cancel when waiting for IO.
 	pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
-	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 
 	mjv_source_set_callback(t->source, &callback_got_frame, (void *)t);
+	mjv_thread_show_spinner(t);
+	if (mjv_source_open(t->source) == 0) {
+		mjv_thread_hide_spinner(t);
+		return NULL;
+	}
+	mjv_thread_hide_spinner(t);
+	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 	mjv_source_capture(t->source);
 	return NULL;
 }

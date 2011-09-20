@@ -13,7 +13,7 @@ static const char config_file[] = "config";
 int
 main (int argc, char **argv)
 {
-	GList *config_sources = NULL;
+	GList *config_sources_list = NULL;
 	GList *source_list = NULL;
 
 	struct mjv_config *config;
@@ -27,29 +27,22 @@ main (int argc, char **argv)
 		g_printerr("Fatal: could not read config\n");
 		return 1;
 	}
-	if ((config_sources = (GList *)mjv_config_get_sources(config)) == NULL) {
+	if ((config_sources_list = (GList *)mjv_config_get_sources(config)) == NULL) {
 		g_printerr("Fatal: could not get config list of sources\n");
 		return 1;
 	}
 	// Loop over all config sources, create a source for them:
-	for (GList *link = g_list_first((GList *)config_sources); link; link = g_list_next(link))
+	for (GList *link = g_list_first((GList *)config_sources_list); link; link = g_list_next(link))
 	{
 		struct mjv_source *source;
+		struct mjv_config_source *config_source = MJV_CONFIG_SOURCE(link);
 
-		g_printerr("Creating %s\n", mjv_config_source_get_name(MJV_CONFIG_SOURCE(link)));
-//		source = mjv_source_create_from_network (
-//			mjv_config_source_get_host(MJV_CONFIG_SOURCE(link)),
-//			mjv_config_source_get_port(MJV_CONFIG_SOURCE(link)),
-//			mjv_config_source_get_path(MJV_CONFIG_SOURCE(link)),
-//			mjv_config_source_get_user(MJV_CONFIG_SOURCE(link)),
-//			mjv_config_source_get_pass(MJV_CONFIG_SOURCE(link))
-//		);
-		source = mjv_source_create_from_file("streams/stream.dannycam", 100000);
-		if (source == NULL) {
+		g_printerr("Creating %s\n", mjv_config_source_get_name(config_source));
+		if ((source = mjv_source_create( config_source)) == NULL) {
 			g_printerr("Could not create source\n");
 			return 1;
 		}
-		if (mjv_source_set_name(source, mjv_config_source_get_name(MJV_CONFIG_SOURCE(link))) == 0) {
+		if (mjv_source_set_name(source, mjv_config_source_get_name(config_source)) == 0) {
 			g_printerr("Could not set name\n");
 		}
 		source_list = g_list_append(source_list, source);

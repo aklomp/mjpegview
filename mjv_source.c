@@ -18,6 +18,7 @@
 #include <assert.h>
 #include <pthread.h>
 
+#include "mjv_config.h"
 #include "mjv_frame.h"
 #include "mjv_framebuf.h"
 #include "mjv_source.h"
@@ -73,13 +74,14 @@ struct mjv_source {
 	int mimetype;
 	int state;		// state machine state
 	char *boundary;
+	int delay_usec;
 	unsigned int id;
 	unsigned int boundary_len;
 	unsigned int response_code;
 	unsigned int content_length;
-	unsigned int delay_usec;
 	struct timespec last_emitted;
 	struct mjv_framebuf *framebuf;
+	struct mjv_config_source *config;
 
 	char *buf;	// read buffer;
 	char *cur;	// current char under inspection in buffer;
@@ -92,7 +94,8 @@ struct mjv_source {
 	void *user_pointer;
 };
 
-static struct mjv_source *mjv_source_create ();
+static bool mjv_source_open_file (struct mjv_source *);
+static bool mjv_source_open_network (struct mjv_source *);
 static int fetch_header_line (struct mjv_source *, char **, unsigned int *);
 static inline int increment_cur (struct mjv_source *);
 static inline bool is_numeric (char);
@@ -182,44 +185,56 @@ err:	if (base64_auth_string != NULL) {
 	return false;
 }
 
-struct mjv_source *
-mjv_source_create_from_file (const char *filename, unsigned int delay_usec)
+bool
+mjv_source_open (struct mjv_source *s)
 {
-	struct mjv_source *s;
+	int type = mjv_config_source_get_type(s->config);
 
-	if ((s = mjv_source_create()) == NULL) {
-		return NULL;
+	if (type == TYPE_FILE) {
+		return mjv_source_open_file(s);
 	}
-	if ((s->fd = open(filename, O_RDONLY)) < 0) {
-		g_printerr("%s: %s\n", g_strerror(errno), filename);
-		mjv_source_destroy(s);
-		return NULL;
+	if (type == TYPE_NETWORK) {
+		return mjv_source_open_network(s);
 	}
-	s->delay_usec = delay_usec;
-	return s;
+	return false;
 }
 
-struct mjv_source *
-mjv_source_create_from_network (const char *host, const unsigned int port, const char *path, const char *username, const char *password)
+static bool
+mjv_source_open_file (struct mjv_source *s)
+{
+	const char *file = mjv_config_source_get_file(s->config);
+	s->delay_usec = mjv_config_source_get_usec(s->config);
+
+	if ((s->fd = open(file, O_RDONLY)) < 0) {
+		g_printerr("%s: %s\n", g_strerror(errno), file);
+		return false;
+	}
+	return true;
+}
+
+static bool
+mjv_source_open_network (struct mjv_source *s)
 {
 	int fd = -1;
 	char port_string[6];
-	struct mjv_source *s;
 	struct addrinfo hints;
 	struct addrinfo *result;
 	struct addrinfo *rp;
 
+	       int  port = mjv_config_source_get_port(s->config);
+	const char *host = mjv_config_source_get_host(s->config);
+	const char *path = mjv_config_source_get_path(s->config);
+	const char *user = mjv_config_source_get_user(s->config);
+	const char *pass = mjv_config_source_get_pass(s->config);
+
 	// FIXME: all char* arguments are assumed to be null-terminated,
 	// but all of them come from user input! Don't be so trusting.
 
-	if ((s = mjv_source_create()) == NULL) {
-		return NULL;
-	}
 	Debug("host: %s\n", host);
 	Debug("port: %i\n", port);
 	Debug("path: %s\n", path);
-	Debug("user: %s\n", username);
-	Debug("pass: %s\n", password);
+	Debug("user: %s\n", user);
+	Debug("pass: %s\n", pass);
 
 	memset(&hints, 0, sizeof(struct addrinfo));
 	hints.ai_family = AF_UNSPEC;
@@ -261,7 +276,7 @@ mjv_source_create_from_network (const char *host, const unsigned int port, const
 	Debug("Connected\n");
 
 	// Write the HTTP request:
-	if (!write_http_request(fd, path, username, password)) {
+	if (!write_http_request(fd, path, user, pass)) {
 		Debug("Could not write HTTP request\n");
 		goto err;
 	}
@@ -269,18 +284,16 @@ mjv_source_create_from_network (const char *host, const unsigned int port, const
 
 	// The response is handled by the stream decoder. We're done:
 	s->fd = fd;
-	return s;
+	return true;
 
 err:	if (fd >= 0) {
 		close(fd);
 	}
-	mjv_source_destroy(s);
-	return NULL;
+	return false;
 }
 
-// This function is protected; only used in this file:
-static struct mjv_source *
-mjv_source_create (void)
+struct mjv_source *
+mjv_source_create (struct mjv_config_source *config)
 {
 	int ret;
 	struct mjv_source *s = NULL;
@@ -303,6 +316,7 @@ mjv_source_create (void)
 	s->state = STATE_HTTP_BANNER;
 	s->last_emitted.tv_sec = 0;
 	s->last_emitted.tv_nsec = 0;
+	s->config = config;
 
 	s->callback = NULL;
 	s->user_pointer = NULL;

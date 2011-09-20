@@ -2,6 +2,7 @@
 #include <string.h>
 #include <glib.h>
 #include <libconfig.h>
+#include "mjv_config.h"
 
 struct mjv_config {
 	config_t *config;
@@ -10,18 +11,23 @@ struct mjv_config {
 
 struct mjv_config_source {
 	char *name;
-	char *host;
-	char *path;
-	char *user;
-	char *pass;
-	int port;
+	int   type;
+	union {
+		struct {
+			int   port;
+			char *host;
+			char *path;
+			char *user;
+			char *pass;
+		};
+		struct {
+			char *file;
+			unsigned int usec;
+		};
+	};
 };
 
-static struct mjv_config_source *mjv_config_source_create (const char *, const char *, const char *, const char *, const char *, int);
-static void mjv_config_source_destroy (struct mjv_config_source *);
-
-struct mjv_config *
-mjv_config_init (void)
+struct mjv_config *mjv_config_init (void)
 {
 	struct mjv_config *c;
 
@@ -49,15 +55,6 @@ mjv_config_destroy (struct mjv_config *c)
 	g_free(c);
 }
 
-static struct mjv_config_source *
-mjv_config_source_create (const char *name, const char *host, const char *path, const char *user, const char *pass, int port)
-{
-	struct mjv_config_source *s;
-
-	if ((s = g_try_malloc(sizeof(*s))) == NULL) {
-		goto err_0;
-	}
-
 #define ADD_STRING(x,y) \
 	if (x == NULL) s->x = NULL; else { \
 		int len = strlen(x) + 1; \
@@ -67,6 +64,34 @@ mjv_config_source_create (const char *name, const char *host, const char *path, 
 		memcpy(s->x, x, len); \
 	}
 
+struct mjv_config_source *
+mjv_config_source_create_from_file (const char *name, const char *file, int usec)
+{
+	struct mjv_config_source *s;
+
+	if ((s = g_try_malloc(sizeof(*s))) == NULL) {
+		goto err_0;
+	}
+	s->type = TYPE_FILE;
+	s->usec = usec;
+	ADD_STRING(name, 1);
+	ADD_STRING(file, 2);
+	return s;
+
+err_2:	g_free(s->name);
+err_1:	g_free(s);
+err_0:	return NULL;
+}
+
+struct mjv_config_source *
+mjv_config_source_create_from_network (const char *name, const char *host, const char *path, const char *user, const char *pass, int port)
+{
+	struct mjv_config_source *s;
+
+	if ((s = g_try_malloc(sizeof(*s))) == NULL) {
+		goto err_0;
+	}
+	s->type = TYPE_NETWORK;
 	s->port = port;
 	ADD_STRING(name, 1);
 	ADD_STRING(host, 2);
@@ -82,28 +107,38 @@ err_2:	g_free(s->name);
 err_1:	g_free(s);
 err_0:	return NULL;
 
-#undef ADD_STRING
 }
 
-static void
+#undef ADD_STRING
+
+void
 mjv_config_source_destroy (struct mjv_config_source *s)
 {
 	g_assert(s != NULL);
 
-	if (s->name != NULL) g_free(s->name);
-	if (s->host != NULL) g_free(s->host);
-	if (s->path != NULL) g_free(s->path);
-	if (s->user != NULL) g_free(s->user);
-	if (s->pass != NULL) g_free(s->pass);
+	if (s->type == TYPE_NETWORK) {
+		if (s->name != NULL) g_free(s->name);
+		if (s->host != NULL) g_free(s->host);
+		if (s->path != NULL) g_free(s->path);
+		if (s->user != NULL) g_free(s->user);
+		if (s->pass != NULL) g_free(s->pass);
+	}
+	else if (s->type == TYPE_FILE) {
+		if (s->name != NULL) g_free(s->name);
+		if (s->file != NULL) g_free(s->file);
+	}
 	g_free(s);
 }
 
 const char *mjv_config_source_get_name (struct mjv_config_source *s) { g_assert(s != NULL); return s->name; }
+const char *mjv_config_source_get_file (struct mjv_config_source *s) { g_assert(s != NULL); return s->file; }
 const char *mjv_config_source_get_host (struct mjv_config_source *s) { g_assert(s != NULL); return s->host; }
 const char *mjv_config_source_get_path (struct mjv_config_source *s) { g_assert(s != NULL); return s->path; }
 const char *mjv_config_source_get_user (struct mjv_config_source *s) { g_assert(s != NULL); return s->user; }
 const char *mjv_config_source_get_pass (struct mjv_config_source *s) { g_assert(s != NULL); return s->pass; }
-      int   mjv_config_source_get_port (struct mjv_config_source *s) { g_assert(s != NULL); return s->port; }
+int mjv_config_source_get_type (struct mjv_config_source *s) { g_assert(s != NULL); return s->type; }
+int mjv_config_source_get_port (struct mjv_config_source *s) { g_assert(s != NULL); return s->port; }
+int mjv_config_source_get_usec (struct mjv_config_source *s) { g_assert(s != NULL); return s->usec; }
 
 bool
 mjv_config_read_file (struct mjv_config *c, const char *filename)
@@ -132,28 +167,47 @@ mjv_config_get_sources (struct mjv_config *c)
 	len = config_setting_length(sources);
 	for (i = 0; i < len; i++) {
 		int port = 0;
+		int usec = 200000;
+		const char *type = NULL;
 		const char *name = NULL;
 		const char *host = NULL;
 		const char *path = NULL;
 		const char *user = NULL;
 		const char *pass = NULL;
+		const char *file = NULL;
 		struct mjv_config_source *mjv_config_source;
 		config_setting_t *source = config_setting_get_elem(sources, i);
 
-		config_setting_lookup_int(source, "port", &port);
-		config_setting_lookup_string(source, "name", &name);
-		config_setting_lookup_string(source, "host", &host);
-		config_setting_lookup_string(source, "path", &path);
-		config_setting_lookup_string(source, "user", &user);
-		config_setting_lookup_string(source, "pass", &pass);
+		if (config_setting_lookup_string(source, "type", &type) == CONFIG_FALSE) {
+			continue;
+		}
+		if (strcmp(type, "file") == 0)
+		{
+			config_setting_lookup_int(   source, "usec", &usec);
+			config_setting_lookup_string(source, "name", &name);
+			config_setting_lookup_string(source, "file", &file);
 
-		// TODO check for mandatory objects
-		// TODO add support for files
+			if ((mjv_config_source = mjv_config_source_create_from_file(name, file, usec)) == NULL) {
+				// TODO error handling
+				continue;
+			}
+		}
+		else if (strcmp(type, "network") == 0)
+		{
+			config_setting_lookup_int(   source, "port", &port);
+			config_setting_lookup_string(source, "name", &name);
+			config_setting_lookup_string(source, "host", &host);
+			config_setting_lookup_string(source, "path", &path);
+			config_setting_lookup_string(source, "user", &user);
+			config_setting_lookup_string(source, "pass", &pass);
 
-		if ((mjv_config_source = mjv_config_source_create(name, host, path, user, pass, port)) == NULL) {
-			// TODO real error handling
-			g_printerr("Could not create object!\n");
-			break;
+			if ((mjv_config_source = mjv_config_source_create_from_network(name, host, path, user, pass, port)) == NULL) {
+				// TODO error handling
+				continue;
+			}
+		}
+		else {
+			continue;
 		}
 		c->sources = g_list_append(c->sources, mjv_config_source);
 	}

@@ -95,8 +95,8 @@ mjv_thread_create (struct mjv_source *source)
 
 	struct mjv_thread *t = g_malloc(sizeof(*t));
 
-	t->width   = 320;
-	t->height  = 240;
+	t->width   = 640;
+	t->height  = 480;
 	t->cairo   = NULL;
 	t->pixbuf  = NULL;
 	t->source  = source;
@@ -299,7 +299,7 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 static void
 draw_spinner (cairo_t *cr, int x, int y, int step)
 {
-	static float rsmall = 3;
+	static float rsmall = 3.0;
 	static float sin[] = { 0.0, 9.0, 18 * 0.866, 18.0 };	// r = 18
 
 #define TWO_PI        6.28318530717958647692

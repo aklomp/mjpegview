@@ -49,17 +49,28 @@ mjv_gui_main (int argc, char **argv, GList *sources_list)
 		}
 		thread_list = g_list_append(thread_list, thread);
 	}
+	GtkWidget *vbox = gtk_vbox_new(FALSE, 0);
+	int screen_width = gdk_screen_get_width(GTK_WINDOW(win)->screen);
+
 	// Add all thread drawing areas to the box:
-	// TODO: proper spacing algorithm:
-	GtkWidget *box = gtk_hbox_new(FALSE, 0);
+	int row_width = 0;
+	GtkWidget *hbox = gtk_hbox_new(FALSE, 0);
 	for (link = g_list_first(thread_list); link; link = g_list_next(link))
 	{
 		struct mjv_thread *thread = MJV_THREAD(link);
 		const GtkWidget *canvas = mjv_thread_get_canvas(thread);
 
-		gtk_container_add(GTK_CONTAINER(box), (GtkWidget *)canvas);
+		row_width += mjv_thread_get_width(thread);
+		if (row_width > screen_width - 20) {
+			gtk_container_add(GTK_CONTAINER(vbox), hbox);
+			hbox = gtk_hbox_new(FALSE, 0);
+			row_width = 0;
+		}
+		gtk_container_add(GTK_CONTAINER(hbox), (GtkWidget *)canvas);
 	}
-	gtk_container_add(GTK_CONTAINER(win), box);
+	gtk_container_add(GTK_CONTAINER(vbox), hbox);
+
+	gtk_container_add(GTK_CONTAINER(win), vbox);
 	gtk_signal_connect(GTK_OBJECT(win), "destroy", G_CALLBACK(on_destroy), NULL);
 	gtk_widget_show_all(win);
 

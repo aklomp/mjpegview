@@ -724,10 +724,11 @@ state_http_subheader (struct mjv_source *s)
 		if (increment_cur(s) == OUT_OF_BYTES) {
 			return OUT_OF_BYTES;
 		}
-#undef STRING_MATCH
 	}
 	s->state = STATE_FIND_IMAGE;
 	return increment_cur(s);
+
+#undef STRING_MATCH
 }
 
 static int
@@ -868,9 +869,6 @@ fetch_header_line (struct mjv_source *s, char **line, unsigned int *line_len)
 			}
 			*line = s->anchor;
 			s->anchor = NULL;
-		//	write( 1, ">", 1 );
-		//	write( 1, *line, *line_len );
-		//	write( 1, "<\n", 2 );
 			return READ_SUCCESS;
 		}
 		if (increment_cur(s) == OUT_OF_BYTES) {
@@ -968,7 +966,6 @@ interpret_content_type (struct mjv_source *s, char *line, unsigned int line_len)
 #undef SIZE_LEFT
 #undef SKIP_SPACES
 #undef STRING_MATCH
-
 }
 
 static bool

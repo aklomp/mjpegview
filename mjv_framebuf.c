@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include <glib.h>
+#include <glib/gprintf.h>
 #include <assert.h>
 
 #include "mjv_frame.h"

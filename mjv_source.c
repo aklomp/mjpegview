@@ -7,7 +7,6 @@
 #include <string.h>	// strncmp(), memcpy()
 #include <glib.h>
 #include <glib/gprintf.h>
-#include <stdio.h>	// snprintf()
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -78,7 +77,6 @@ struct mjv_source {
 	unsigned int response_code;
 	unsigned int content_length;
 	unsigned int delay_usec;
-	unsigned int loop_terminate;
 	struct timespec last_emitted;
 	struct mjv_framebuf *framebuf;
 
@@ -89,7 +87,8 @@ struct mjv_source {
 
 	// This callback function is called whenever
 	// a mjv_frame object is created by a source:
-	void (*got_frame_callback)(struct mjv_source *, struct mjv_frame *);
+	void (*callback)(struct mjv_frame *, void *);
+	void *user_pointer;
 };
 
 static struct mjv_source *mjv_source_create ();
@@ -183,11 +182,11 @@ err:	if (base64_auth_string != NULL) {
 }
 
 struct mjv_source *
-mjv_source_create_from_file (const char *filename, unsigned int delay_usec, void (*got_frame_callback)(struct mjv_source*, struct mjv_frame*))
+mjv_source_create_from_file (const char *filename, unsigned int delay_usec)
 {
 	struct mjv_source *s;
 
-	if ((s = mjv_source_create(got_frame_callback)) == NULL) {
+	if ((s = mjv_source_create()) == NULL) {
 		return NULL;
 	}
 	if ((s->fd = open(filename, O_RDONLY)) < 0) {
@@ -200,7 +199,7 @@ mjv_source_create_from_file (const char *filename, unsigned int delay_usec, void
 }
 
 struct mjv_source *
-mjv_source_create_from_network (const char *host, const unsigned int port, const char *path, const char *username, const char *password, void (*got_frame_callback)(struct mjv_source*, struct mjv_frame*))
+mjv_source_create_from_network (const char *host, const unsigned int port, const char *path, const char *username, const char *password)
 {
 	int fd = -1;
 	char port_string[6];
@@ -212,7 +211,7 @@ mjv_source_create_from_network (const char *host, const unsigned int port, const
 	// FIXME: all char* arguments are assumed to be null-terminated,
 	// but all of them come from user input! Don't be so trusting.
 
-	if ((s = mjv_source_create(got_frame_callback)) == NULL) {
+	if ((s = mjv_source_create()) == NULL) {
 		return NULL;
 	}
 	Debug("host: %s\n", host);
@@ -233,7 +232,7 @@ mjv_source_create_from_network (const char *host, const unsigned int port, const
 		g_printerr("Implausible port\n");
 		goto err;
 	}
-	snprintf(port_string, sizeof(port_string), "%u", port);
+	g_snprintf(port_string, sizeof(port_string), "%u", port);
 
 	if (getaddrinfo(host, port_string, &hints, &result) != 0) {
 		g_printerr("%s\n", g_strerror(errno));
@@ -280,7 +279,7 @@ err:	if (fd >= 0) {
 
 // This function is protected; only used in this file:
 static struct mjv_source *
-mjv_source_create (void (*got_frame_callback)(struct mjv_source*, struct mjv_frame*))
+mjv_source_create (void)
 {
 	int ret;
 	struct mjv_source *s = NULL;
@@ -300,11 +299,12 @@ mjv_source_create (void (*got_frame_callback)(struct mjv_source*, struct mjv_fra
 	s->mimetype = -1;
 	s->content_length = 0;
 	s->delay_usec = 0;
-	s->loop_terminate = 0;
 	s->state = STATE_HTTP_BANNER;
-	s->got_frame_callback = got_frame_callback;
 	s->last_emitted.tv_sec = 0;
 	s->last_emitted.tv_nsec = 0;
+
+	s->callback = NULL;
+	s->user_pointer = NULL;
 
 	s->anchor = NULL;
 	s->cur = s->head = s->buf;
@@ -313,13 +313,13 @@ mjv_source_create (void (*got_frame_callback)(struct mjv_source*, struct mjv_fra
 	if ((s->name = malloc(15)) == NULL) {
 		goto err;
 	}
-	ret = snprintf(s->name, 15, "Camera %u", s->id);
+	ret = g_snprintf(s->name, 15, "Camera %u", s->id);
 	if (ret < 0) {
-		g_printerr("Could not snprintf() the default camera name\n");
+		g_printerr("Could not g_snprintf() the default camera name\n");
 		goto err;
 	}
 	if (ret >= 15) {
-		g_printerr("Not enough space to snprintf() the default camera name\n");
+		g_printerr("Not enough space to g_snprintf() the default camera name\n");
 		goto err;
 	}
 	// Return the new object:
@@ -373,14 +373,11 @@ mjv_source_set_name (struct mjv_source *const s, const char *const name)
 }
 
 void
-mjv_source_set_terminate (struct mjv_source *const s)
+mjv_source_set_callback (struct mjv_source *s, void (*got_frame_callback)(struct mjv_frame*, void*), void *user_pointer)
 {
-	// This will cause the main loop to exit:
-	// FIXME: this is a piss-poor way to tell this capture thread to stop.
-	// If the thread is waiting in pselect(), it won't exit till it hits
-	// the timeout. We should redo this with signals.
 	g_assert(s != NULL);
-	s->loop_terminate = 1;
+	s->callback = got_frame_callback;
+	s->user_pointer = user_pointer;
 }
 
 const char *
@@ -453,7 +450,7 @@ mjv_source_capture (struct mjv_source *s)
 
 get_bytes:
 
-	while (s->loop_terminate == 0)
+	for (;;)
 	{
 		FD_ZERO(&fdset);
 		FD_SET(s->fd, &fdset);
@@ -971,7 +968,7 @@ got_new_frame (struct mjv_source *s, char *start, unsigned int len)
 	if (s->delay_usec > 0) {
 		artificial_delay(s->delay_usec, &s->last_emitted);
 	}
-	if (s->got_frame_callback == NULL) {
+	if (s->callback == NULL) {
 		Debug("No callback defined for frame\n");
 		return false;
 	}
@@ -979,7 +976,7 @@ got_new_frame (struct mjv_source *s, char *start, unsigned int len)
 		Debug("Could not create frame\n");
 		return false;
 	}
-	s->got_frame_callback(s, frame);
+	s->callback(frame, s->user_pointer);
 
 	return true;
 }

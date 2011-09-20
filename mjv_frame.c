@@ -171,3 +171,10 @@ mjv_frame_get_height (const struct mjv_frame *const frame)
 	assert(frame != NULL);
 	return frame->height;
 }
+
+unsigned int
+mjv_frame_get_row_stride (const struct mjv_frame *const frame)
+{
+	g_assert(frame != NULL);
+	return frame->row_stride;
+}

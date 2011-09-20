@@ -11,9 +11,14 @@
 #define MJV_SOURCE(x)	((struct mjv_source *)((x)->data))
 #define MJV_THREAD(x)	((struct mjv_thread *)((x)->data))
 
+static void cancel_all_threads (void);
+
+static GList *thread_list = NULL;
+
 static void
 on_destroy (void)
 {
+	cancel_all_threads();
 	gtk_main_quit();
 }
 
@@ -22,7 +27,6 @@ int
 mjv_gui_main (int argc, char **argv, GList *sources)
 {
 	GList *link = NULL;
-	GList *thread_list = NULL;
 
 	if (!g_thread_supported()) {
 		g_thread_init(NULL);
@@ -73,6 +77,17 @@ mjv_gui_main (int argc, char **argv, GList *sources)
 	g_list_free_full(thread_list, (GDestroyNotify)(mjv_thread_destroy));
 
 	return 0;
+}
+
+static void
+cancel_all_threads (void)
+{
+	GList *link;
+
+	gdk_threads_leave();
+	for (link = g_list_first(thread_list); link; link = g_list_next(link)) {
+		mjv_thread_cancel(MJV_THREAD(link));
+	}
 }
 
 #if 0

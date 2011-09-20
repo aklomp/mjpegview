@@ -16,6 +16,7 @@
 #include <sys/select.h>
 #include <arpa/inet.h>
 #include <assert.h>
+#include <pthread.h>
 
 #include "mjv_frame.h"
 #include "mjv_framebuf.h"
@@ -456,10 +457,22 @@ get_bytes:
 		FD_SET(s->fd, &fdset);
 		timeout.tv_sec = 10;
 		timeout.tv_nsec = 0;
+
+		// Make this thread explicitly cancelable here:
+		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+
+		// pselect() is a pthread cancellation point. When this thread
+		// receives a cancellation request, it will be inside here.
 		available = pselect(s->fd + 1, &fdset, NULL, NULL, &timeout, NULL);
 
+		// Make this thread uncancelable; once processing IO,
+		// it should be allowed to finish its job.
+		// Note: this is fine when all goes well, but not when it doesn't.
+		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+
 		if (available == 0) {
-			// Timeout reached:
+			// timeout reached
+			g_printf("Timeout reached. Giving up.\n");
 			break;
 		}
 		if (available < 0) {

@@ -11,10 +11,12 @@ struct mjv_thread {
 	GMutex    *mutex;
 	GdkPixbuf *pixbuf;
 	GtkWidget *canvas;
-	pthread_t *pthread;
 	unsigned int width;
 	unsigned int height;
 	struct mjv_source *source;
+
+	pthread_t      pthread;
+	pthread_attr_t pthread_attr;
 };
 
 static void *thread_main (void *);
@@ -82,7 +84,9 @@ mjv_thread_create (struct mjv_source *source)
 	t->source  = source;
 	t->mutex   = g_mutex_new();
 	t->canvas  = gtk_drawing_area_new();
-	t->pthread = g_malloc(sizeof(pthread_t));
+
+	pthread_attr_init(&t->pthread_attr);
+	pthread_attr_setdetachstate(&t->pthread_attr, PTHREAD_CREATE_JOINABLE);
 
 	gtk_widget_set_size_request(t->canvas, t->width, t->height);
 	gtk_signal_connect(GTK_OBJECT(t->canvas), "expose_event", GTK_SIGNAL_FUNC(canvas_repaint), t);
@@ -95,32 +99,34 @@ mjv_thread_destroy (struct mjv_thread *t)
 {
 	g_assert(t != NULL);
 	g_mutex_free(t->mutex);
+	pthread_attr_destroy(&t->pthread_attr);
 	if (t->pixbuf != NULL) {
 		g_object_unref(t->pixbuf);
 	}
-	g_free(t->pthread);
 	g_free(t);
 }
 
 bool
 mjv_thread_run (struct mjv_thread *t)
 {
-	GError *error = NULL;
-
-	g_assert(t != NULL);
-	if (pthread_create(t->pthread, NULL, thread_main, t) != 0) {
-		g_printerr("%s\n", error->message);
+	if (pthread_create(&t->pthread, &t->pthread_attr, thread_main, t) != 0) {
 		return false;
 	}
 	return true;
 }
 
-struct mjv_thread *
-mjv_thread_term (struct mjv_thread *t)
+bool
+mjv_thread_cancel (struct mjv_thread *t)
 {
-	// Terminate a thread by sending a sigterm, then waiting for it to join
-	g_assert(t != NULL);
-	return NULL;
+	// Terminate a thread by sending it a cancel request, then waiting for
+	// it to join. The cancel request will be caught in mjv_source_capture.
+	if (pthread_cancel(t->pthread) != 0) {
+		return false;
+	}
+	if (pthread_join(t->pthread, NULL) != 0) {
+		return false;
+	}
+	return true;
 }
 
 unsigned int
@@ -149,9 +155,15 @@ thread_main (void *user_data)
 {
 	struct mjv_thread *t = (struct mjv_thread *)user_data;
 
+	// The thread responds to pthread_cancel requests, but only
+	// at cancellation points. We set up mjv_source_capture's pselect()
+	// statement to be the only cancellation point that qualifies.
+	// The thread will then only cancel when waiting for IO.
+	pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
+	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+
 	mjv_source_set_callback(t->source, &callback_got_frame, (void *)t);
 	mjv_source_capture(t->source);
-	pthread_exit(NULL);
 	return NULL;
 }
 

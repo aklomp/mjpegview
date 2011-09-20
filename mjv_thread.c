@@ -1,7 +1,9 @@
 #include <stdbool.h>
+#include <string.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <glib.h>
+#include <time.h>
 #include <gtk/gtk.h>
 
 #include "mjv_frame.h"
@@ -13,7 +15,9 @@
 struct spinner {
 	unsigned int step;
 	unsigned int active;
+	unsigned int iterations;
 	pthread_t pthread;
+	struct timespec start;
 };
 
 struct mjv_thread {
@@ -163,6 +167,8 @@ mjv_thread_show_spinner (struct mjv_thread *t)
 	// This function spawns a new pthread that wakes every x milliseconds
 	// and requests a redraw of the frame area.
 
+	t->spinner.iterations = 0;
+	clock_gettime(CLOCK_REALTIME, &t->spinner.start);
 	if (pthread_create(&t->spinner.pthread, NULL, spinner_thread_main, t) != 0) {
 		return;
 	}
@@ -300,7 +306,7 @@ static void
 draw_spinner (cairo_t *cr, int x, int y, int step)
 {
 	static float rsmall = 3.0;
-	static float sin[] = { 0.0, 9.0, 18 * 0.866, 18.0 };	// r = 18
+	static float sin[] = { 0.0, 9.0, 18.0 * 0.866, 18.0 };	// r = 18
 
 #define TWO_PI        6.28318530717958647692
 #define STEP_RGBA(n)  cairo_set_source_rgba(cr, 0.5, 0.5, 0.5, 0.9 - 0.06 * ((n + step) % SPINNER_STEPS))
@@ -327,18 +333,45 @@ draw_spinner (cairo_t *cr, int x, int y, int step)
 static void *
 spinner_thread_main (void *user_data)
 {
+	struct timespec now;
+	struct timespec wake;
 	struct mjv_thread *t = (struct mjv_thread *)user_data;
 
+#define ITERS_PER_SEC  (SPINNER_STEPS)
+#define INTERVAL_NSEC  (1000000000 / ITERS_PER_SEC)
+
 	// This function runs the spinner thread.
-	// Every x milliseconds, update spinner step and
-	// request a redraw of the canvas. Continue till canceled.
+	// Every interval, update spinner step and request
+	// a redraw of the canvas. Continue till canceled.
 	for (;;)
 	{
-		usleep(50000);
+		// Get absolute time, calculated from the start time and the number
+		// of iterations, of when the next tick should be issued. Aligning
+		// the timing to an absolute clock prevents framerate drift.
+		wake.tv_sec  = t->spinner.start.tv_sec + t->spinner.iterations / ITERS_PER_SEC;
+		wake.tv_nsec = t->spinner.start.tv_nsec + (t->spinner.iterations % ITERS_PER_SEC) * INTERVAL_NSEC;
+		if (wake.tv_nsec >= 1000000000) {
+			wake.tv_sec++;
+			wake.tv_nsec -= 1000000000;
+		}
+		// `wake' holds the time that we should wake up at. If this time is
+		// already in the past, we are out of sync and rebase time to `now':
+		clock_gettime(CLOCK_REALTIME, &now);
+		if (now.tv_sec > wake.tv_sec || (now.tv_sec == wake.tv_sec && now.tv_nsec >= wake.tv_nsec)) {
+			t->spinner.iterations = 0;
+			memcpy(&t->spinner.start, &now, sizeof(struct timespec));
+		}
+		else {
+			while (clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &wake, NULL) != 0);
+		}
 		t->spinner.step = (t->spinner.step + 1) % SPINNER_STEPS;
 		gdk_threads_enter();
 		gtk_widget_queue_draw(t->canvas);
 		gdk_threads_leave();
+		t->spinner.iterations++;
 	}
 	return NULL;
+
+#undef INTERVAL_USEC
+#undef ITERS_PER_SEC
 }

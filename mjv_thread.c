@@ -1,10 +1,20 @@
 #include <stdbool.h>
+#include <unistd.h>
 #include <pthread.h>
 #include <glib.h>
 #include <gtk/gtk.h>
 
 #include "mjv_frame.h"
 #include "mjv_source.h"
+#include "mjv_thread.h"
+
+// This is a private structure that describes the
+// spinner element (the "on-hold" spinning circle)
+struct spinner {
+	unsigned int step;
+	unsigned int active;
+	pthread_t pthread;
+};
 
 struct mjv_thread {
 	cairo_t   *cairo;
@@ -13,14 +23,19 @@ struct mjv_thread {
 	GtkWidget *canvas;
 	unsigned int width;
 	unsigned int height;
+	struct spinner spinner;
 	struct mjv_source *source;
 
 	pthread_t      pthread;
 	pthread_attr_t pthread_attr;
 };
 
+#define SPINNER_STEPS	12
+
 static void *thread_main (void *);
 static void callback_got_frame (struct mjv_frame *, void *);
+static void draw_spinner (cairo_t *, int, int, int);
+static void *spinner_thread_main (void *);
 
 static void
 print_source_name (cairo_t *cr, const char *name)
@@ -64,6 +79,9 @@ canvas_repaint (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 	if ((source_name = mjv_source_get_name(t->source)) != NULL) {
 		print_source_name(t->cairo, source_name);
 	}
+	if (t->spinner.active == 1) {
+		draw_spinner(t->cairo, t->width / 2, t->height / 2, t->spinner.step);
+	}
 	cairo_destroy(t->cairo);
 	g_mutex_unlock(t->mutex);
 	return TRUE;
@@ -85,6 +103,9 @@ mjv_thread_create (struct mjv_source *source)
 	t->mutex   = g_mutex_new();
 	t->canvas  = gtk_drawing_area_new();
 
+	t->spinner.step = 0;
+	t->spinner.active = 0;
+
 	pthread_attr_init(&t->pthread_attr);
 	pthread_attr_setdetachstate(&t->pthread_attr, PTHREAD_CREATE_JOINABLE);
 
@@ -98,6 +119,10 @@ void
 mjv_thread_destroy (struct mjv_thread *t)
 {
 	g_assert(t != NULL);
+
+	if (t->spinner.active) {
+		mjv_thread_hide_spinner(t);
+	}
 	g_mutex_free(t->mutex);
 	pthread_attr_destroy(&t->pthread_attr);
 	if (t->pixbuf != NULL) {
@@ -127,6 +152,33 @@ mjv_thread_cancel (struct mjv_thread *t)
 		return false;
 	}
 	return true;
+}
+
+void
+mjv_thread_show_spinner (struct mjv_thread *t)
+{
+	g_assert(t != NULL);
+	g_assert(t->spinner.active == 0);
+
+	// This function spawns a new pthread that wakes every x milliseconds
+	// and requests a redraw of the frame area.
+
+	if (pthread_create(&t->spinner.pthread, NULL, spinner_thread_main, t) != 0) {
+		return;
+	}
+	t->spinner.active = 1;
+}
+
+void
+mjv_thread_hide_spinner (struct mjv_thread *t)
+{
+	g_assert(t != NULL);
+	g_assert(t->spinner.active == 1);
+
+	if (pthread_cancel(t->spinner.pthread) != 0) {
+		return;
+	}
+	t->spinner.active = 0;
 }
 
 unsigned int
@@ -236,4 +288,51 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 	// Frame is no longer needed, and we took responsibility for it:
 	mjv_frame_destroy(frame);
 	return;
+}
+
+static void
+draw_spinner (cairo_t *cr, int x, int y, int step)
+{
+	static float rsmall = 3;
+	static float sin[] = { 0.0, 9.0, 18 * 0.866, 18.0 };	// r = 18
+
+#define TWO_PI        6.28318530717958647692
+#define STEP_RGBA(n)  cairo_set_source_rgba(cr, 0.5, 0.5, 0.5, 0.9 - 0.06 * ((n + step) % SPINNER_STEPS))
+#define STEP_PAINT    cairo_close_path(cr); cairo_fill(cr)
+
+	STEP_RGBA( 0); cairo_arc(cr, x + sin[0], y + sin[3], rsmall, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA( 1); cairo_arc(cr, x + sin[1], y + sin[2], rsmall, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA( 2); cairo_arc(cr, x + sin[2], y + sin[1], rsmall, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA( 3); cairo_arc(cr, x + sin[3], y + sin[0], rsmall, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA( 4); cairo_arc(cr, x + sin[2], y - sin[1], rsmall, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA( 5); cairo_arc(cr, x + sin[1], y - sin[2], rsmall, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA( 6); cairo_arc(cr, x + sin[0], y - sin[3], rsmall, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA( 7); cairo_arc(cr, x - sin[1], y - sin[2], rsmall, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA( 8); cairo_arc(cr, x - sin[2], y - sin[1], rsmall, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA( 9); cairo_arc(cr, x - sin[3], y - sin[0], rsmall, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA(10); cairo_arc(cr, x - sin[2], y + sin[1], rsmall, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA(11); cairo_arc(cr, x - sin[1], y + sin[2], rsmall, 0, TWO_PI); STEP_PAINT;
+
+#undef STEP_PAINT
+#undef STEP_RGBA
+#undef TWO_PI
+}
+
+static void *
+spinner_thread_main (void *user_data)
+{
+	struct mjv_thread *t = (struct mjv_thread *)user_data;
+
+	// This function runs the spinner thread.
+	// Every x milliseconds, update spinner step and
+	// request a redraw of the canvas. Continue till canceled.
+	for (;;)
+	{
+		usleep(50000);
+		t->spinner.step = (t->spinner.step + 1) % SPINNER_STEPS;
+		gdk_threads_enter();
+		gtk_widget_queue_draw(t->canvas);
+		gdk_threads_leave();
+	}
+	return NULL;
 }

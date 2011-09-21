@@ -16,8 +16,9 @@ struct spinner {
 	unsigned int step;
 	unsigned int active;
 	unsigned int iterations;
-	pthread_t pthread;
 	struct timespec start;
+
+	pthread_t pthread;
 };
 
 struct mjv_thread {
@@ -66,10 +67,19 @@ canvas_repaint (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 	const char *source_name;
 	struct mjv_thread *t = (struct mjv_thread *)(user_data);
 
+	// Note: this function is EXCLUSIVELY called from gtk_main() as a callback,
+	// and thus within the global thread lock. Hence NO locking is necessary here
+	// (since this function is inherently single-threaded). Note that NONE of
+	// the functions that this function calls, can use gdk_threads_enter() /
+	// leave(), because doing so results in deadlock (the global thread lock is
+	// not reentrant),
+
 	// TODO: constant creating/destroying of the cairo context
 	// seems wasteful:
-	g_mutex_lock(t->mutex);
 
+	// This mutex ensures that no running thread can update the mjv_thread data
+	// object from the frame callback while we are here:
+	g_mutex_lock(t->mutex);
 	t->cairo = gdk_cairo_create(widget->window);
 
 	if (t->pixbuf == NULL) {
@@ -185,6 +195,7 @@ mjv_thread_hide_spinner (struct mjv_thread *t)
 		return;
 	}
 	t->spinner.active = 0;
+	gtk_widget_queue_draw( t->canvas );
 }
 
 unsigned int
@@ -239,15 +250,6 @@ destroy_pixels (guchar *pixels, gpointer data)
 }
 
 static void
-widget_force_size (GtkWidget *widget, unsigned int height, unsigned int width)
-{
-	// This function is not thread safe; caller must call g_thread_enter()
-	if (height != (unsigned int)widget->allocation.height || width != (unsigned int)widget->allocation.width) {
-		gtk_widget_set_size_request(widget, width, height);
-	}
-}
-
-static void
 callback_got_frame (struct mjv_frame *frame, void *user_data)
 {
 	unsigned char *pixels;
@@ -273,8 +275,13 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 
 	thread->width  = width;
 	thread->height = height;
-	widget_force_size(thread->canvas, height, width);
 
+	gdk_threads_enter();
+
+	if (height != (unsigned int)thread->canvas->allocation.height
+	 || width != (unsigned int)thread->canvas->allocation.width) {
+		gtk_widget_set_size_request(thread->canvas, width, height);
+	}
 	// Replace existing pixbuf:
 	if (thread->pixbuf != NULL) {
 		g_object_unref(thread->pixbuf);
@@ -290,12 +297,11 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 		destroy_pixels,		// destroy function for pixel data
 		NULL			// user argument to the above
 	);
-	g_mutex_unlock(thread->mutex);
-
-	// FIXME use bit depth from frame, etc:
-	gdk_threads_enter();
 	gtk_widget_queue_draw(thread->canvas);
+
 	gdk_threads_leave();
+
+	g_mutex_unlock(thread->mutex);
 
 	// Frame is no longer needed, and we took responsibility for it:
 	mjv_frame_destroy(frame);

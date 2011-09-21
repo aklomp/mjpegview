@@ -74,7 +74,7 @@ mjv_gui_main (int argc, char **argv, GList *sources_list)
 	gtk_signal_connect(GTK_OBJECT(win), "destroy", G_CALLBACK(on_destroy), NULL);
 	gtk_widget_show_all(win);
 
-	// Create camera threads:
+	// Run camera threads:
 	for (link = g_list_first(thread_list); link; link = g_list_next(link)) {
 		if (mjv_thread_run(MJV_THREAD(link)) == 0) {
 			g_printerr("Could not create thread\n");

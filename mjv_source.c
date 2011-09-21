@@ -115,13 +115,11 @@ static int state_image_by_eof_search (struct mjv_source *);
 static bool
 write_http_request (const int fd, const char *path, const char *username, const char *password)
 {
+	GString *buffer = NULL;
 	char *auth_string = NULL;
 	gchar *base64_auth_string = NULL;
 	char crlf[] = "\r\n";
-	char get_request[] = "GET ";
-	char http_signature[] = " HTTP/1.0";
-	char auth_basic_header[] = "Authorization: Basic ";
-	char keep_alive[] = "Connection: Keep-Alive";
+	char keep_alive[] = "Connection: Keep-Alive\r\n";
 
 #define SAFE_WRITE(x, y) \
 		do { \
@@ -139,13 +137,14 @@ write_http_request (const int fd, const char *path, const char *username, const 
 	unsigned int username_len = (username == NULL) ? 0 : strlen(username);
 	unsigned int password_len = (password == NULL) ? 0 : strlen(password);
 
-	// Make HTTP request:
-	SAFE_WRITE_STR(get_request);
-	SAFE_WRITE(path, strlen(path));
-	SAFE_WRITE_STR(http_signature);
-	SAFE_WRITE_STR(crlf);
+	// We have to write entire header lines at a time; at least one IP
+	// camera closes its connection if it receives only a GET and then
+	// a pause between the next write.
+
+	buffer = g_string_sized_new( 80 );
+	g_string_printf( buffer, "GET %s HTTP/1.0\r\n", path );
+	SAFE_WRITE(buffer->str, buffer->len);
 	SAFE_WRITE_STR(keep_alive);
-	SAFE_WRITE_STR(crlf);
 
 	// Add basic authentication header if credentials passed:
 	if (username != NULL && password != NULL)
@@ -158,19 +157,14 @@ write_http_request (const int fd, const char *path, const char *username, const 
 		auth_string[username_len] = ':';
 		memcpy(auth_string + username_len + 1, password, password_len);
 		base64_auth_string = g_base64_encode((guchar *)auth_string, (gsize)(username_len + password_len + 1));
-
-		SAFE_WRITE_STR(auth_basic_header);
-		SAFE_WRITE(base64_auth_string, strlen(base64_auth_string));
-		SAFE_WRITE_STR(crlf);
-
+		g_string_printf(buffer, "Authorization: Basic %s\r\n", base64_auth_string);
+		SAFE_WRITE(buffer->str, buffer->len);
 		g_free(base64_auth_string);
 		free(auth_string);
 		base64_auth_string = auth_string = NULL;
 	}
-	// Terminate HTTP header:
 	SAFE_WRITE_STR(crlf);
-
-	// Return successfully:
+	g_string_free(buffer, TRUE);
 	return true;
 
 #undef SAFE_WRITE_STR

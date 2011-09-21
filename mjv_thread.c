@@ -267,6 +267,7 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 	unsigned int height = mjv_frame_get_height(frame);
 	unsigned int row_stride = mjv_frame_get_row_stride(frame);
 
+	gdk_threads_enter();
 	g_mutex_lock(thread->mutex);
 
 	g_assert(width > 0);
@@ -275,8 +276,6 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 
 	thread->width  = width;
 	thread->height = height;
-
-	gdk_threads_enter();
 
 	if (height != (unsigned int)thread->canvas->allocation.height
 	 || width != (unsigned int)thread->canvas->allocation.width) {
@@ -299,12 +298,12 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 	);
 	gtk_widget_queue_draw(thread->canvas);
 
-	gdk_threads_leave();
-
 	g_mutex_unlock(thread->mutex);
+	gdk_threads_leave();
 
 	// Frame is no longer needed, and we took responsibility for it:
 	mjv_frame_destroy(frame);
+
 	return;
 }
 

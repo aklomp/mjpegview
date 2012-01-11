@@ -34,7 +34,7 @@ struct mjv_config *mjv_config_init (void)
 	if ((c = g_try_malloc(sizeof(*c))) == NULL) {
 		return NULL;
 	}
-	if ((c->config = g_try_malloc(sizeof(config_t))) == NULL) {
+	if ((c->config = g_try_malloc(sizeof(*c->config))) == NULL) {
 		g_free(c);
 		return NULL;
 	}

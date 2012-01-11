@@ -45,7 +45,7 @@ mjv_frame_create (char *rawbits, unsigned int num_rawbits)
 		return NULL;
 	}
 	// Allocate timestamp struct:
-	if ((f->timestamp = malloc(sizeof(*f->timestamp))) == NULL) {
+	if ((f->timestamp = malloc(sizeof(timestamp))) == NULL) {
 		goto err;
 	}
 	// Allocate space for the frame:
@@ -53,7 +53,7 @@ mjv_frame_create (char *rawbits, unsigned int num_rawbits)
 		goto err;
 	}
 	// Copy timestamp over:
-	memcpy(f->timestamp, &timestamp, sizeof(struct timespec));
+	memcpy(f->timestamp, &timestamp, sizeof(timestamp));
 
 	// Copy rawbits over:
 	memcpy(f->rawbits, rawbits, num_rawbits);

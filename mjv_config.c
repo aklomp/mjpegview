@@ -121,15 +121,15 @@ mjv_config_source_destroy (struct mjv_config_source *s)
 	g_assert(s != NULL);
 
 	if (s->type == TYPE_NETWORK) {
-		if (s->name != NULL) g_free(s->name);
-		if (s->host != NULL) g_free(s->host);
-		if (s->path != NULL) g_free(s->path);
-		if (s->user != NULL) g_free(s->user);
-		if (s->pass != NULL) g_free(s->pass);
+		g_free(s->name);
+		g_free(s->host);
+		g_free(s->path);
+		g_free(s->user);
+		g_free(s->pass);
 	}
 	else if (s->type == TYPE_FILE) {
-		if (s->name != NULL) g_free(s->name);
-		if (s->file != NULL) g_free(s->file);
+		g_free(s->name);
+		g_free(s->file);
 	}
 	g_free(s);
 }

@@ -4,6 +4,9 @@
 #include <libconfig.h>
 #include "mjv_config.h"
 
+#define g_malloc_fail(s)   ((s = g_try_malloc(sizeof(*(s)))) == NULL)
+
+
 struct mjv_config {
 	config_t *config;
 	GList *sources;
@@ -32,10 +35,10 @@ mjv_config_init (void)
 {
 	struct mjv_config *c;
 
-	if ((c = g_try_malloc(sizeof(*c))) == NULL) {
+	if (g_malloc_fail(c)) {
 		return NULL;
 	}
-	if ((c->config = g_try_malloc(sizeof(*c->config))) == NULL) {
+	if (g_malloc_fail(c->config)) {
 		g_free(c);
 		return NULL;
 	}
@@ -70,7 +73,7 @@ mjv_config_source_create_from_file (const char *name, const char *file, int usec
 {
 	struct mjv_config_source *s;
 
-	if ((s = g_try_malloc(sizeof(*s))) == NULL) {
+	if (g_malloc_fail(s)) {
 		goto err_0;
 	}
 	s->type = TYPE_FILE;
@@ -89,7 +92,7 @@ mjv_config_source_create_from_network (const char *name, const char *host, const
 {
 	struct mjv_config_source *s;
 
-	if ((s = g_try_malloc(sizeof(*s))) == NULL) {
+	if (g_malloc_fail(s)) {
 		goto err_0;
 	}
 	s->type = TYPE_NETWORK;

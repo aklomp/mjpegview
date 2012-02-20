@@ -10,6 +10,8 @@ struct mjv_framebuf {
 	GList *frames;
 };
 
+#define g_malloc_fail(s)	((s = g_try_malloc(sizeof(*(s)))) == NULL)
+
 #define MJV_FRAME(x)	((struct mjv_frame *)((x)->data))
 
 struct mjv_framebuf *
@@ -17,7 +19,9 @@ mjv_framebuf_create (guint capacity)
 {
 	struct mjv_framebuf *framebuf;
 
-	framebuf = g_malloc(sizeof(*framebuf));
+	if (g_malloc_fail(framebuf)) {
+		return NULL;
+	}
 	framebuf->capacity = capacity;
 	framebuf->frames = NULL;
 	return framebuf;

@@ -38,6 +38,8 @@ struct mjv_thread {
 
 #define SPINNER_STEPS	12
 
+#define g_malloc_fail(s)   ((s = g_try_malloc(sizeof(*(s)))) == NULL)
+
 static void *thread_main (void *);
 static void callback_got_frame (struct mjv_frame *, void *);
 static void draw_spinner (cairo_t *, int, int, int);
@@ -108,8 +110,11 @@ mjv_thread_create (struct mjv_source *source)
 	// This function creates a thread object, but does not run it.
 	// To run, call mjv_thread_run on the thread object.
 
-	struct mjv_thread *t = g_malloc(sizeof(*t));
+	struct mjv_thread *t;
 
+	if (g_malloc_fail(t)) {
+		return NULL;
+	}
 	t->width   = 640;
 	t->height  = 480;
 	t->cairo   = NULL;

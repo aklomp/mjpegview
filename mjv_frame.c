@@ -1,6 +1,6 @@
 #include <time.h>	// clock_gettime()
 #include <errno.h>
-#include <stdlib.h>	// malloc(), free()
+#include <stdlib.h>
 #include <stdio.h>	// FILE, for jpeglib.h
 #include <string.h>	// memcpy()
 #include <jpeglib.h>
@@ -29,6 +29,8 @@ struct my_jpeg_error_mgr {
 	jmp_buf setjmp_buffer;
 };
 
+#define malloc_fail(s)   ((s = malloc(sizeof(*(s)))) == NULL)
+
 struct mjv_frame *
 mjv_frame_create (char *rawbits, unsigned int num_rawbits)
 {
@@ -41,11 +43,11 @@ mjv_frame_create (char *rawbits, unsigned int num_rawbits)
 		goto err;
 	}
 	// Allocate structure:
-	if ((f = malloc(sizeof(*f))) == NULL) {
-		return NULL;
+	if (malloc_fail(f)) {
+		goto err;
 	}
 	// Allocate timestamp struct:
-	if ((f->timestamp = malloc(sizeof(timestamp))) == NULL) {
+	if (malloc_fail(f->timestamp)) {
 		goto err;
 	}
 	// Allocate space for the frame:

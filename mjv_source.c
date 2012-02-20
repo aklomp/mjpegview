@@ -170,12 +170,9 @@ write_http_request (const int fd, const char *path, const char *username, const 
 #undef SAFE_WRITE_STR
 #undef SAFE_WRITE
 
-err:	if (base64_auth_string != NULL) {
-		g_free(base64_auth_string);
-	}
-	if (auth_string != NULL) {
-		free(auth_string);
-	}
+err:	g_free(base64_auth_string);
+	free(auth_string);
+	g_string_free(buffer, TRUE);
 	return false;
 }
 

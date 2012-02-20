@@ -27,7 +27,8 @@ struct mjv_config_source {
 	};
 };
 
-struct mjv_config *mjv_config_init (void)
+struct mjv_config *
+mjv_config_init (void)
 {
 	struct mjv_config *c;
 

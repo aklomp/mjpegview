@@ -435,7 +435,7 @@ adjust_streambuf (struct mjv_source *s)
 	}
 }
 
-void
+enum mjv_source_status
 mjv_source_capture (struct mjv_source *s)
 {
 	int available;
@@ -478,25 +478,25 @@ get_bytes:
 		if (available == 0) {
 			// timeout reached
 			g_printf("Timeout reached. Giving up.\n");
-			break;
+			return MJV_SOURCE_TIMEOUT;
 		}
 		if (available < 0) {
 			if (errno == EINTR) {
 				continue;
 			}
 			g_printerr("%s\n", g_strerror(errno));
-			break;
+			return MJV_SOURCE_READ_ERROR;
 		}
 		for (;;)
 		{
 			s->nread = read(s->fd, s->head, BUF_SIZE - (s->head - s->buf));
 			if (s->nread < 0) {
 				g_printerr("%s\n", g_strerror(errno));
-				return; // PREMATURE_EOF
+				return MJV_SOURCE_READ_ERROR;
 			}
 			else if (s->nread == 0) {
-				// End of file:
-				return;
+				g_printf("End of file\n");
+				return MJV_SOURCE_PREMATURE_EOF;
 			}
 			// buflast is always ONE PAST the real last char:
 			s->head += s->nread;
@@ -518,16 +518,17 @@ get_bytes:
 					}
 					case READ_ERROR: {
 						g_printerr("READ_ERROR\n");
-						return;
+						return MJV_SOURCE_READ_ERROR;
 					}
 					case CORRUPT_HEADER: {
 						g_printerr("Corrupt header\n");
-						return;
+						return MJV_SOURCE_CORRUPT_HEADER;
 					}
 				}
 			}
 		}
 	}
+	return MJV_SOURCE_SUCCESS;
 }
 
 static int
@@ -966,6 +967,7 @@ got_new_frame (struct mjv_source *s, char *start, unsigned int len)
 
 	DebugEntry();
 
+#if 0
 	// Quick validity check on the frame;
 	// must start with 0xffd8 and end with 0xffd9:
 	if (!VALUE_AT(start, 0xffd8)) {
@@ -980,6 +982,7 @@ got_new_frame (struct mjv_source *s, char *start, unsigned int len)
 			}
 		}
 	}
+#endif
 	if (s->delay_usec > 0) {
 		artificial_delay(s->delay_usec, &s->last_emitted);
 	}

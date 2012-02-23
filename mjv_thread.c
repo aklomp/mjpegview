@@ -29,6 +29,7 @@ struct mjv_thread {
 	GtkWidget *canvas;
 	unsigned int width;
 	unsigned int height;
+	unsigned int blinker;
 	struct spinner spinner;
 	struct mjv_source *source;
 
@@ -36,12 +37,15 @@ struct mjv_thread {
 	pthread_attr_t pthread_attr;
 };
 
+#define BLINKER_ALPHA	0.3
+#define BLINKER_HEIGHT	8
 #define SPINNER_STEPS	12
 
 #define g_malloc_fail(s)   ((s = g_try_malloc(sizeof(*(s)))) == NULL)
 
 static void *thread_main (void *);
 static void callback_got_frame (struct mjv_frame *, void *);
+static void draw_blinker (cairo_t *, int, int, int);
 static void draw_spinner (cairo_t *, int, int, int);
 static void *spinner_thread_main (void *);
 
@@ -99,6 +103,9 @@ canvas_repaint (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 	if (t->spinner.active == 1) {
 		draw_spinner(t->cairo, widget->allocation.width / 2, widget->allocation.height / 2, t->spinner.step);
 	}
+	else {
+		draw_blinker(t->cairo, 4, t->height - 4 - BLINKER_HEIGHT, t->blinker);
+	}
 	cairo_destroy(t->cairo);
 	g_mutex_unlock(t->mutex);
 	return TRUE;
@@ -117,6 +124,7 @@ mjv_thread_create (struct mjv_source *source)
 	}
 	t->width   = 640;
 	t->height  = 480;
+	t->blinker = 0;
 	t->cairo   = NULL;
 	t->pixbuf  = NULL;
 	t->source  = source;
@@ -313,6 +321,7 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 		destroy_pixels,		// destroy function for pixel data
 		NULL			// user argument to the above
 	);
+	thread->blinker = 1 - thread->blinker;
 	gtk_widget_queue_draw(thread->canvas);
 
 	g_mutex_unlock(thread->mutex);
@@ -322,6 +331,31 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 	mjv_frame_destroy(frame);
 
 	return;
+}
+
+static void
+draw_blinker (cairo_t *cr, int x, int y, int toggle)
+{
+	// The 'blinker' is the small checkerboard that toggles whenever a
+	// frame is received. It indicates that a new frame has been received,
+	// and that the capture is working.
+
+#define RIB (BLINKER_HEIGHT / 2)
+
+	double color_a = (toggle) ? 0.0 : 1.0;
+	double color_b = (toggle) ? 1.0 : 0.0;
+
+	cairo_set_source_rgba(cr, color_a, color_a, color_a, BLINKER_ALPHA);
+	cairo_rectangle(cr, x, y, RIB, RIB);
+	cairo_rectangle(cr, x + RIB, y + RIB, RIB, RIB);
+	cairo_fill(cr);
+
+	cairo_set_source_rgba(cr, color_b, color_b, color_b, BLINKER_ALPHA);
+	cairo_rectangle(cr, x + RIB, y, RIB, RIB);
+	cairo_rectangle(cr, x, y + RIB, RIB, RIB);
+	cairo_fill(cr);
+
+#undef RIB
 }
 
 static void

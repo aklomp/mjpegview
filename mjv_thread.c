@@ -32,10 +32,22 @@ struct framerate {
 	pthread_t pthread;
 };
 
+struct toolbar {
+	GtkWidget *toolbar;
+	GtkToolItem *btn_record;
+	GtkToolItem *btn_connect;
+};
+
+struct statusbar {
+	GtkWidget *lbl_fps;
+	GtkWidget *lbl_framebuf;
+};
+
 struct mjv_thread {
 	cairo_t   *cairo;
 	GMutex    *mutex;
 	GdkPixbuf *pixbuf;
+	GtkWidget *frame;
 	GtkWidget *canvas;
 	unsigned int width;
 	unsigned int height;
@@ -43,6 +55,8 @@ struct mjv_thread {
 	struct spinner spinner;
 	struct mjv_source *source;
 	struct framerate framerate;
+	struct toolbar toolbar;
+	struct statusbar statusbar;
 
 	pthread_t      pthread;
 	pthread_attr_t pthread_attr;
@@ -62,6 +76,9 @@ static void *spinner_thread_main (void *);
 static void framerate_insert_datapoint (struct mjv_thread *, struct timespec *);
 static void framerate_estimator (struct mjv_thread *);
 static float timespec_diff (struct timespec *, struct timespec *);
+static void create_frame(struct mjv_thread *thread);
+static void create_frame_toolbar(struct mjv_thread *thread);
+static GtkWidget *create_frame_statusbar(struct mjv_thread *thread);
 
 static void
 print_source_name (cairo_t *cr, const char *name)
@@ -143,6 +160,7 @@ mjv_thread_create (struct mjv_source *source)
 	t->pixbuf  = NULL;
 	t->source  = source;
 	t->mutex   = g_mutex_new();
+	t->frame   = NULL;
 	t->canvas  = gtk_drawing_area_new();
 
 	t->spinner.step = 0;
@@ -150,6 +168,8 @@ mjv_thread_create (struct mjv_source *source)
 	t->spinner.mutex = g_mutex_new();
 
 	memset(&t->framerate, 0, sizeof(t->framerate));
+	memset(&t->toolbar, 0, sizeof(t->toolbar));
+	memset(&t->statusbar, 0, sizeof(t->statusbar));
 
 	t->framerate.fps = -1.0;
 	t->framerate.mutex = g_mutex_new();
@@ -202,6 +222,14 @@ mjv_thread_cancel (struct mjv_thread *t)
 		return false;
 	}
 	return true;
+}
+
+GtkWidget *
+mjv_thread_create_area(struct mjv_thread *t)
+{
+	// Create the frame for this thread.
+	create_frame(t);
+	return t->frame;
 }
 
 void
@@ -539,4 +567,54 @@ timespec_diff (struct timespec *new, struct timespec *old)
 	time_t diff_sec = new->tv_sec - old->tv_sec;
 	long diff_nsec = new->tv_nsec - old->tv_nsec;
 	return diff_sec + ((float)diff_nsec / 1000000000.0);
+}
+
+static void
+create_frame (struct mjv_thread *thread)
+{
+	thread->frame = gtk_frame_new(NULL);
+	create_frame_toolbar(thread);
+	GtkWidget *vbox = gtk_vbox_new(FALSE, 0);
+	GtkWidget *statusbar = create_frame_statusbar(thread);
+
+	gtk_box_pack_start(GTK_BOX(vbox), thread->toolbar.toolbar, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(vbox), thread->canvas, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(vbox), statusbar, FALSE, FALSE, 0);
+
+	gtk_container_add(GTK_CONTAINER(thread->frame), vbox);
+}
+
+static void
+create_frame_toolbar (struct mjv_thread *thread)
+{
+	GtkWidget *toolbar = gtk_toolbar_new();
+	GtkToolItem *btn_record = gtk_toggle_tool_button_new_from_stock(GTK_STOCK_MEDIA_RECORD);
+	GtkToolItem *btn_connect = gtk_tool_button_new_from_stock(GTK_STOCK_CONNECT);
+	gtk_tool_button_set_label(GTK_TOOL_BUTTON(btn_record), "Record");
+	gtk_tool_button_set_label(GTK_TOOL_BUTTON(btn_connect), "Connect");
+	gtk_toolbar_insert(GTK_TOOLBAR(toolbar), btn_connect, -1);
+	gtk_toolbar_insert(GTK_TOOLBAR(toolbar), btn_record, -1);
+
+	// Save these to thread object:
+	thread->toolbar.toolbar = toolbar;
+	thread->toolbar.btn_record = btn_record;
+	thread->toolbar.btn_connect = btn_connect;
+}
+
+static GtkWidget *
+create_frame_statusbar (struct mjv_thread *thread)
+{
+	GtkWidget *hbox = gtk_hbox_new(FALSE, 4);
+	GtkWidget *vbox = gtk_vbox_new(FALSE, 4);
+	GtkWidget *separator = gtk_vseparator_new();
+
+	thread->statusbar.lbl_fps = gtk_label_new("0 fps");
+	thread->statusbar.lbl_framebuf = gtk_label_new("100/300");
+
+	gtk_box_pack_start(GTK_BOX(hbox), thread->statusbar.lbl_fps, FALSE, FALSE, 2);
+	gtk_box_pack_start(GTK_BOX(hbox), separator, FALSE, FALSE, 2);
+	gtk_box_pack_start(GTK_BOX(hbox), thread->statusbar.lbl_framebuf, FALSE, FALSE, 2);
+	gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 2);
+
+	return vbox;
 }

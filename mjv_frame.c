@@ -180,3 +180,9 @@ mjv_frame_get_row_stride (const struct mjv_frame *const frame)
 	g_assert(frame != NULL);
 	return frame->row_stride;
 }
+
+struct timespec *
+mjv_frame_get_timestamp (const struct mjv_frame *const frame)
+{
+	return frame->timestamp;
+}

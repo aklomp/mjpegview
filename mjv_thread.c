@@ -22,6 +22,16 @@ struct spinner {
 	pthread_t pthread;
 };
 
+#define FRAMERATE_MEMORY  5
+
+struct framerate {
+	float fps;
+	int nmemory;
+	struct timespec memory[FRAMERATE_MEMORY];
+	GMutex *mutex;
+	pthread_t pthread;
+};
+
 struct mjv_thread {
 	cairo_t   *cairo;
 	GMutex    *mutex;
@@ -32,6 +42,7 @@ struct mjv_thread {
 	unsigned int blinker;
 	struct spinner spinner;
 	struct mjv_source *source;
+	struct framerate framerate;
 
 	pthread_t      pthread;
 	pthread_attr_t pthread_attr;
@@ -48,6 +59,9 @@ static void callback_got_frame (struct mjv_frame *, void *);
 static void draw_blinker (cairo_t *, int, int, int);
 static void draw_spinner (cairo_t *, int, int, int);
 static void *spinner_thread_main (void *);
+static void framerate_insert_datapoint (struct mjv_thread *, struct timespec *);
+static void framerate_estimator (struct mjv_thread *);
+static float timespec_diff (struct timespec *, struct timespec *);
 
 static void
 print_source_name (cairo_t *cr, const char *name)
@@ -135,6 +149,11 @@ mjv_thread_create (struct mjv_source *source)
 	t->spinner.active = 0;
 	t->spinner.mutex = g_mutex_new();
 
+	memset(&t->framerate, 0, sizeof(t->framerate));
+
+	t->framerate.fps = -1.0;
+	t->framerate.mutex = g_mutex_new();
+
 	pthread_attr_init(&t->pthread_attr);
 	pthread_attr_setdetachstate(&t->pthread_attr, PTHREAD_CREATE_JOINABLE);
 
@@ -154,6 +173,7 @@ mjv_thread_destroy (struct mjv_thread *t)
 	}
 	g_mutex_free(t->mutex);
 	g_mutex_free(t->spinner.mutex);
+	g_mutex_free(t->framerate.mutex);
 	pthread_attr_destroy(&t->pthread_attr);
 	if (t->pixbuf != NULL) {
 		g_object_unref(t->pixbuf);
@@ -324,6 +344,8 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 	thread->blinker = 1 - thread->blinker;
 	gtk_widget_queue_draw(thread->canvas);
 
+	framerate_insert_datapoint(thread, mjv_frame_get_timestamp(frame));
+
 	g_mutex_unlock(thread->mutex);
 	gdk_threads_leave();
 
@@ -436,4 +458,85 @@ spinner_thread_main (void *user_data)
 
 #undef INTERVAL_USEC
 #undef ITERS_PER_SEC
+}
+
+static void
+framerate_insert_datapoint (struct mjv_thread *thread, struct timespec *ts)
+{
+	g_mutex_lock(thread->framerate.mutex);
+
+	// Shift existing timestamps one over:
+	memmove(&thread->framerate.memory[1], &thread->framerate.memory[0], sizeof(*thread->framerate.memory) * (FRAMERATE_MEMORY - 1));
+
+	// Add new value at start:
+	thread->framerate.memory[0] = *ts;
+
+	// Adjust total number of timestamps in history buffer:
+	if (thread->framerate.nmemory < FRAMERATE_MEMORY) {
+		thread->framerate.nmemory++;
+	}
+	g_mutex_unlock(thread->framerate.mutex);
+}
+
+static void
+framerate_estimator (struct mjv_thread *thread)
+{
+#define IN_USE  thread->framerate.nmemory
+#define OLDEST  thread->framerate.memory[IN_USE - 1]
+#define NEWEST  thread->framerate.memory[0]
+
+	float diff_among_frames;
+	float diff_with_now;
+	struct timespec now;
+
+	// This function must be run while the framerate
+	// mutex is locked!!
+
+	// No two values to compare yet?
+	if (IN_USE <= 1) {
+		thread->framerate.fps = -1.0;
+		return;
+	}
+	// Compare oldest and newest values:
+	diff_among_frames = timespec_diff(&NEWEST, &OLDEST);
+
+	// Get the wall time:
+	if (clock_gettime(CLOCK_REALTIME, &now) != 0) {
+		thread->framerate.fps = (IN_USE - 1) / diff_among_frames;
+		return;
+	}
+	// Calculate the difference between the last seen frame
+	// and the wall time:
+	diff_with_now = timespec_diff(&now, &NEWEST);
+
+	// If this difference is smaller than the average FPS of
+	// the frames among themselves, return the diff among frames:
+	// If we have 5 frames, we have 4 intervals; hence IN_USE - 1
+	if (diff_with_now < diff_among_frames) {
+		thread->framerate.fps = (IN_USE - 1) / diff_among_frames;
+		return;
+	}
+	// Else there has been a large time gap between the last received
+	// frame and the now (the connection has lagged). If this is less than
+	// 5 times the normal interval, we recalculate the FPS against the
+	// current wall time, else return invalid:
+	if (diff_with_now > diff_among_frames * 5.0) {
+		thread->framerate.fps = -1.0;
+	}
+	else {
+		diff_with_now = timespec_diff(&now, &OLDEST);
+		thread->framerate.fps = IN_USE / diff_with_now;
+	}
+
+#undef NEWEST
+#undef OLDEST
+#undef IN_USE
+}
+
+static float
+timespec_diff (struct timespec *new, struct timespec *old)
+{
+	time_t diff_sec = new->tv_sec - old->tv_sec;
+	long diff_nsec = new->tv_nsec - old->tv_nsec;
+	return diff_sec + ((float)diff_nsec / 1000000000.0);
 }

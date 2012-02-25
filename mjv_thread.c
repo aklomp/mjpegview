@@ -10,12 +10,17 @@
 #include "mjv_source.h"
 #include "mjv_thread.h"
 
+enum state
+{ STATE_DISCONNECTED
+, STATE_CONNECTING
+, STATE_CONNECTED
+};
+
 // This is a private structure that describes the
 // spinner element (the "on-hold" spinning circle)
 struct spinner {
 	GMutex *mutex;
 	unsigned int step;
-	unsigned int active;
 	unsigned int iterations;
 	struct timespec start;
 
@@ -57,6 +62,7 @@ struct mjv_thread {
 	struct framerate framerate;
 	struct toolbar toolbar;
 	struct statusbar statusbar;
+	enum state state;
 
 	pthread_t      pthread;
 	pthread_attr_t pthread_attr;
@@ -140,10 +146,10 @@ canvas_repaint (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 	if ((source_name = mjv_source_get_name(t->source)) != NULL) {
 		print_source_name(t->cairo, source_name);
 	}
-	if (t->spinner.active == 1) {
+	if (t->state == STATE_CONNECTING) {
 		draw_spinner(t->cairo, widget->allocation.width / 2, widget->allocation.height / 2, t->spinner.step);
 	}
-	else {
+	else if (t->state == STATE_CONNECTED) {
 		draw_blinker(t->cairo, 4, t->height - 4 - BLINKER_HEIGHT, t->blinker);
 	}
 	cairo_destroy(t->cairo);
@@ -162,23 +168,17 @@ mjv_thread_create (struct mjv_source *source)
 	if (g_malloc_fail(t)) {
 		return NULL;
 	}
+	memset(t, 0, sizeof(*t));
+
 	t->width   = 640;
 	t->height  = 480;
-	t->blinker = 0;
-	t->cairo   = NULL;
-	t->pixbuf  = NULL;
 	t->source  = source;
 	t->mutex   = g_mutex_new();
-	t->frame   = NULL;
 	t->canvas  = gtk_drawing_area_new();
+	t->state   = STATE_DISCONNECTED;
 
 	t->spinner.step = 0;
-	t->spinner.active = 0;
 	t->spinner.mutex = g_mutex_new();
-
-	memset(&t->framerate, 0, sizeof(t->framerate));
-	memset(&t->toolbar, 0, sizeof(t->toolbar));
-	memset(&t->statusbar, 0, sizeof(t->statusbar));
 
 	t->framerate.fps = -1.0;
 	t->framerate.mutex = g_mutex_new();
@@ -197,7 +197,7 @@ mjv_thread_destroy (struct mjv_thread *t)
 {
 	g_assert(t != NULL);
 
-	if (t->spinner.active) {
+	if (t->state == STATE_CONNECTING) {
 		mjv_thread_hide_spinner(t);
 	}
 	g_mutex_free(t->mutex);
@@ -249,17 +249,10 @@ mjv_thread_show_spinner (struct mjv_thread *t)
 	// This function spawns a new pthread that wakes every x milliseconds
 	// and requests a redraw of the frame area.
 
-	if (g_atomic_int_get(&t->spinner.active) == 1) {
-		return;
-	}
 	g_mutex_lock(t->spinner.mutex);
 	t->spinner.iterations = 0;
 	clock_gettime(CLOCK_REALTIME, &t->spinner.start);
-	if (pthread_create(&t->spinner.pthread, NULL, spinner_thread_main, t) != 0) {
-		g_mutex_unlock(t->spinner.mutex);
-		return;
-	}
-	t->spinner.active = 1;
+	pthread_create(&t->spinner.pthread, NULL, spinner_thread_main, t);
 	g_mutex_unlock(t->spinner.mutex);
 }
 
@@ -268,13 +261,9 @@ mjv_thread_hide_spinner (struct mjv_thread *t)
 {
 	g_assert(t != NULL);
 
-	if (g_atomic_int_get(&t->spinner.active) == 0) {
-		return;
-	}
 	if (pthread_cancel(t->spinner.pthread) != 0) {
 		return;
 	}
-	g_atomic_int_set(&t->spinner.active, 0);
 	gtk_widget_queue_draw(t->canvas);
 }
 
@@ -311,16 +300,20 @@ thread_main (void *user_data)
 	pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
 
 	mjv_source_set_callback(t->source, &callback_got_frame, (void *)t);
+	t->state = STATE_CONNECTING;
 	mjv_thread_show_spinner(t);
 	if (mjv_source_open(t->source) == 0) {
 		mjv_thread_hide_spinner(t);
+		t->state = STATE_DISCONNECTED;
 		return NULL;
 	}
+	t->state = STATE_CONNECTED;
+	mjv_thread_hide_spinner(t);
 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 	framerate_thread_run(t);
 	mjv_source_capture(t->source);
+	t->state = STATE_DISCONNECTED;
 	framerate_thread_kill(t);
-	mjv_thread_hide_spinner(t);
 	return NULL;
 }
 

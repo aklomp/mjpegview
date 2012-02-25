@@ -27,7 +27,7 @@ struct spinner {
 	pthread_t pthread;
 };
 
-#define FRAMERATE_MEMORY  5
+#define FRAMERATE_MEMORY  15
 
 struct framerate {
 	float fps;

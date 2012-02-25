@@ -76,6 +76,15 @@ static void *spinner_thread_main (void *);
 static void framerate_insert_datapoint (struct mjv_thread *, struct timespec *);
 static void framerate_estimator (struct mjv_thread *);
 static float timespec_diff (struct timespec *, struct timespec *);
+
+static void framerate_thread_run(struct mjv_thread *t);
+static void framerate_thread_kill(struct mjv_thread *t);
+static void *framerate_thread_main(void *user_data);
+
+static void create_frame(struct mjv_thread *thread);
+static void create_frame_toolbar(struct mjv_thread *thread);
+static GtkWidget *create_frame_statusbar(struct mjv_thread *thread);
+
 static void create_frame(struct mjv_thread *thread);
 static void create_frame_toolbar(struct mjv_thread *thread);
 static GtkWidget *create_frame_statusbar(struct mjv_thread *thread);
@@ -308,7 +317,9 @@ thread_main (void *user_data)
 		return NULL;
 	}
 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+	framerate_thread_run(t);
 	mjv_source_capture(t->source);
+	framerate_thread_kill(t);
 	mjv_thread_hide_spinner(t);
 	return NULL;
 }
@@ -486,6 +497,53 @@ spinner_thread_main (void *user_data)
 
 #undef INTERVAL_USEC
 #undef ITERS_PER_SEC
+}
+
+static void
+framerate_thread_run (struct mjv_thread *t)
+{
+	// TODO: error handling, ...
+	pthread_create(&t->framerate.pthread, NULL, framerate_thread_main, t);
+}
+
+static void
+framerate_thread_kill (struct mjv_thread *t)
+{
+	pthread_cancel(t->framerate.pthread);
+}
+
+static void *
+framerate_thread_main (void *user_data)
+{
+	float fps;
+	char buf[20];
+	struct mjv_thread *t = (struct mjv_thread*)user_data;
+
+	for (;;)
+	{
+		// Get FPS value:
+		g_mutex_lock(t->framerate.mutex);
+		framerate_estimator(t);
+		fps = t->framerate.fps;
+		g_mutex_unlock(t->framerate.mutex);
+
+		// Create label:
+		if (fps > 0.0) {
+			snprintf(buf, 20, "%0.2f fps", fps);
+			buf[19] = '\0';
+		}
+		else {
+			strcpy(buf, "stalled");
+		}
+		// Change label:
+		gdk_threads_enter();
+		gtk_label_set_text(GTK_LABEL(t->statusbar.lbl_fps), buf);
+		gtk_widget_queue_draw(t->statusbar.lbl_fps);
+		gdk_threads_leave();
+
+		sleep(1);
+	}
+	return NULL;
 }
 
 static void

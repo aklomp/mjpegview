@@ -44,6 +44,7 @@ struct toolbar {
 };
 
 struct statusbar {
+	GtkWidget *lbl_status;
 	GtkWidget *lbl_fps;
 	GtkWidget *lbl_framebuf;
 };
@@ -94,6 +95,9 @@ static GtkWidget *create_frame_statusbar(struct mjv_thread *thread);
 static void create_frame(struct mjv_thread *thread);
 static void create_frame_toolbar(struct mjv_thread *thread);
 static GtkWidget *create_frame_statusbar(struct mjv_thread *thread);
+
+static char *status_string(struct mjv_thread *thread);
+static void update_state(struct mjv_thread *thread, enum state state);
 
 static void
 print_source_name (cairo_t *cr, const char *name)
@@ -300,19 +304,19 @@ thread_main (void *user_data)
 	pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
 
 	mjv_source_set_callback(t->source, &callback_got_frame, (void *)t);
-	t->state = STATE_CONNECTING;
+	update_state(t, STATE_CONNECTING);
 	mjv_thread_show_spinner(t);
 	if (mjv_source_open(t->source) == 0) {
 		mjv_thread_hide_spinner(t);
-		t->state = STATE_DISCONNECTED;
+		update_state(t, STATE_DISCONNECTED);
 		return NULL;
 	}
-	t->state = STATE_CONNECTED;
+	update_state(t, STATE_CONNECTED);
 	mjv_thread_hide_spinner(t);
 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 	framerate_thread_run(t);
 	mjv_source_capture(t->source);
-	t->state = STATE_DISCONNECTED;
+	update_state(t, STATE_DISCONNECTED);
 	framerate_thread_kill(t);
 	return NULL;
 }
@@ -657,15 +661,38 @@ create_frame_statusbar (struct mjv_thread *thread)
 {
 	GtkWidget *hbox = gtk_hbox_new(FALSE, 4);
 	GtkWidget *vbox = gtk_vbox_new(FALSE, 4);
-	GtkWidget *separator = gtk_vseparator_new();
 
 	thread->statusbar.lbl_fps = gtk_label_new("0 fps");
+	thread->statusbar.lbl_status = gtk_label_new("disconnected");
 	thread->statusbar.lbl_framebuf = gtk_label_new("100/300");
 
-	gtk_box_pack_start(GTK_BOX(hbox), thread->statusbar.lbl_fps, FALSE, FALSE, 2);
-	gtk_box_pack_start(GTK_BOX(hbox), separator, FALSE, FALSE, 2);
-	gtk_box_pack_start(GTK_BOX(hbox), thread->statusbar.lbl_framebuf, FALSE, FALSE, 2);
+	gtk_box_pack_start(GTK_BOX(hbox), thread->statusbar.lbl_status, FALSE, FALSE, 2);
+	gtk_box_pack_start(GTK_BOX(hbox), gtk_vseparator_new(), FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(hbox), thread->statusbar.lbl_fps, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(hbox), gtk_vseparator_new(), FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(hbox), thread->statusbar.lbl_framebuf, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 2);
 
 	return vbox;
+}
+
+static char *
+status_string (struct mjv_thread *thread)
+{
+	switch (thread->state) {
+		case STATE_DISCONNECTED: return "disconnected";
+		case STATE_CONNECTING: return "connecting";
+		case STATE_CONNECTED: return "connected";
+	}
+	return "unknown";
+}
+
+static void
+update_state (struct mjv_thread *thread, enum state state)
+{
+	thread->state = state;
+	gdk_threads_enter();
+	gtk_label_set_text(GTK_LABEL(thread->statusbar.lbl_status), status_string(thread));
+	gtk_widget_queue_draw(thread->statusbar.lbl_status);
+	gdk_threads_leave();
 }

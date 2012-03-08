@@ -454,8 +454,6 @@ mjv_source_capture (struct mjv_source *s)
 		state_image_by_eof_search
 	};
 
-get_bytes:
-
 	for (;;)
 	{
 		FD_ZERO(&fdset);
@@ -487,45 +485,37 @@ get_bytes:
 			g_printerr("%s\n", g_strerror(errno));
 			return MJV_SOURCE_READ_ERROR;
 		}
-		for (;;)
+		s->nread = read(s->fd, s->head, BUF_SIZE - (s->head - s->buf));
+		if (s->nread < 0) {
+			g_printerr("%s\n", g_strerror(errno));
+			return MJV_SOURCE_READ_ERROR;
+		}
+		else if (s->nread == 0) {
+			g_printf("End of file\n");
+			return MJV_SOURCE_PREMATURE_EOF;
+		}
+		// buflast is always ONE PAST the real last char:
+		s->head += s->nread;
+
+		Debug("Read %u bytes\n", s->nread);
+
+		// Dispatcher; while successful, keep jumping from state to state:
+next_state: 	switch (state_jump_table[s->state](s))
 		{
-			s->nread = read(s->fd, s->head, BUF_SIZE - (s->head - s->buf));
-			if (s->nread < 0) {
-				g_printerr("%s\n", g_strerror(errno));
+			case READ_SUCCESS:
+				goto next_state;
+
+			case OUT_OF_BYTES:
+				adjust_streambuf(s);
+				continue;
+
+			case READ_ERROR:
+				g_printerr("READ_ERROR\n");
 				return MJV_SOURCE_READ_ERROR;
-			}
-			else if (s->nread == 0) {
-				g_printf("End of file\n");
-				return MJV_SOURCE_PREMATURE_EOF;
-			}
-			// buflast is always ONE PAST the real last char:
-			s->head += s->nread;
 
-			Debug("Read %u bytes\n", s->nread);
-
-			// Dispatcher; while successful, keep jumping from state to state:
-			for (;;)
-			{
-				switch (state_jump_table[s->state](s))
-				{
-					case READ_SUCCESS: {
-						continue;
-					}
-					case OUT_OF_BYTES: {
-						// Need to read more bytes from the source.
-						adjust_streambuf(s);
-						goto get_bytes;
-					}
-					case READ_ERROR: {
-						g_printerr("READ_ERROR\n");
-						return MJV_SOURCE_READ_ERROR;
-					}
-					case CORRUPT_HEADER: {
-						g_printerr("Corrupt header\n");
-						return MJV_SOURCE_CORRUPT_HEADER;
-					}
-				}
-			}
+			case CORRUPT_HEADER:
+				g_printerr("Corrupt header\n");
+				return MJV_SOURCE_CORRUPT_HEADER;
 		}
 	}
 	return MJV_SOURCE_SUCCESS;

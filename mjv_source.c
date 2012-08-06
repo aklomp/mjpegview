@@ -141,8 +141,8 @@ write_http_request (const int fd, const char *path, const char *username, const 
 	// camera closes its connection if it receives only a GET and then
 	// a pause between the next write.
 
-	buffer = g_string_sized_new( 80 );
-	g_string_printf( buffer, "GET %s HTTP/1.0\r\n", path );
+	buffer = g_string_sized_new(80);
+	g_string_printf(buffer, "GET %s HTTP/1.0\r\n", path);
 	SAFE_WRITE(buffer->str, buffer->len);
 	SAFE_WRITE_STR(keep_alive);
 
@@ -655,7 +655,7 @@ state_find_boundary (struct mjv_source *s)
 			return OUT_OF_BYTES;
 		}
 	}
-	return READ_SUCCESS;
+	return increment_cur(s);
 }
 
 static int

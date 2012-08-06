@@ -2,11 +2,12 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
-#include <glib.h>
 #include <time.h>
+#include <glib.h>
 #include <gtk/gtk.h>
 
 #include "mjv_frame.h"
+#include "mjv_framebuf.h"
 #include "mjv_source.h"
 #include "mjv_thread.h"
 
@@ -60,6 +61,7 @@ struct mjv_thread {
 	unsigned int blinker;
 	struct spinner spinner;
 	struct mjv_source *source;
+	struct mjv_framebuf *framebuf;
 	struct framerate framerate;
 	struct toolbar toolbar;
 	struct statusbar statusbar;
@@ -187,6 +189,8 @@ mjv_thread_create (struct mjv_source *source)
 	t->framerate.fps = -1.0;
 	t->framerate.mutex = g_mutex_new();
 
+	t->framebuf = mjv_framebuf_create(50);
+
 	pthread_attr_init(&t->pthread_attr);
 	pthread_attr_setdetachstate(&t->pthread_attr, PTHREAD_CREATE_JOINABLE);
 
@@ -208,6 +212,7 @@ mjv_thread_destroy (struct mjv_thread *t)
 	g_mutex_free(t->spinner.mutex);
 	g_mutex_free(t->framerate.mutex);
 	pthread_attr_destroy(&t->pthread_attr);
+	mjv_framebuf_destroy(t->framebuf);
 	if (t->pixbuf != NULL) {
 		g_object_unref(t->pixbuf);
 	}
@@ -304,6 +309,8 @@ thread_main (void *user_data)
 	pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
 
 	mjv_source_set_callback(t->source, &callback_got_frame, (void *)t);
+
+	// Try to connect:
 	update_state(t, STATE_CONNECTING);
 	mjv_thread_show_spinner(t);
 	if (mjv_source_open(t->source) == 0) {
@@ -311,11 +318,17 @@ thread_main (void *user_data)
 		update_state(t, STATE_DISCONNECTED);
 		return NULL;
 	}
+	// We are connected:
 	update_state(t, STATE_CONNECTED);
 	mjv_thread_hide_spinner(t);
 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 	framerate_thread_run(t);
+
+	// Stay in this function till it terminates;
+	// meanwhile we get frames back through callback_got_frame():
 	mjv_source_capture(t->source);
+
+	// We are disconnected:
 	update_state(t, STATE_DISCONNECTED);
 	framerate_thread_kill(t);
 	return NULL;
@@ -326,6 +339,17 @@ destroy_pixels (guchar *pixels, gpointer data)
 {
 	(void)data;
 	g_free(pixels);
+}
+
+static void
+update_framebuf_label (struct mjv_thread *thread)
+{
+	GString *s = mjv_framebuf_status_string(thread->framebuf);
+	gdk_threads_enter();
+	gtk_label_set_text(GTK_LABEL(thread->statusbar.lbl_framebuf), s->str);
+	gtk_widget_queue_draw(thread->statusbar.lbl_framebuf);
+	gdk_threads_leave();
+	g_string_free(s, TRUE);
 }
 
 static void
@@ -385,10 +409,14 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 	g_mutex_unlock(thread->mutex);
 	gdk_threads_leave();
 
-	// Frame is no longer needed, and we took responsibility for it:
-	mjv_frame_destroy(frame);
-
-	return;
+	// See if the framebuffer will take responsibility for this frame object,
+	// else the responsibility for it ends with us, so we destroy it:
+	if (mjv_framebuf_append(thread->framebuf, frame)) {
+		update_framebuf_label(thread);
+	}
+	else {
+		mjv_frame_destroy(frame);
+	}
 }
 
 static void

@@ -419,28 +419,31 @@ draw_blinker (cairo_t *cr, int x, int y, int toggle)
 static void
 draw_spinner (cairo_t *cr, int x, int y, int step)
 {
-	static float rsmall = 3.0;
-	static float sin[] = { 0.0, 9.0, 18.0 * 0.866, 18.0 };	// r = 18
-
 #define TWO_PI        6.28318530717958647692
+#define RLARGE        18.0
+#define RSMALL        3.0
 #define STEP_RGBA(n)  cairo_set_source_rgba(cr, 0.5, 0.5, 0.5, 0.9 - 0.06 * ((n + step) % SPINNER_STEPS))
 #define STEP_PAINT    cairo_close_path(cr); cairo_fill(cr)
 
-	STEP_RGBA( 0); cairo_arc(cr, x + sin[0], y + sin[3], rsmall, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA( 1); cairo_arc(cr, x + sin[1], y + sin[2], rsmall, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA( 2); cairo_arc(cr, x + sin[2], y + sin[1], rsmall, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA( 3); cairo_arc(cr, x + sin[3], y + sin[0], rsmall, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA( 4); cairo_arc(cr, x + sin[2], y - sin[1], rsmall, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA( 5); cairo_arc(cr, x + sin[1], y - sin[2], rsmall, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA( 6); cairo_arc(cr, x + sin[0], y - sin[3], rsmall, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA( 7); cairo_arc(cr, x - sin[1], y - sin[2], rsmall, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA( 8); cairo_arc(cr, x - sin[2], y - sin[1], rsmall, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA( 9); cairo_arc(cr, x - sin[3], y - sin[0], rsmall, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA(10); cairo_arc(cr, x - sin[2], y + sin[1], rsmall, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA(11); cairo_arc(cr, x - sin[1], y + sin[2], rsmall, 0, TWO_PI); STEP_PAINT;
+	static float sin[] = { 0.0, RLARGE * 0.5, RLARGE * 0.86602540378443864676, RLARGE };
+
+	STEP_RGBA( 0); cairo_arc(cr, x + sin[0], y + sin[3], RSMALL, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA( 1); cairo_arc(cr, x + sin[1], y + sin[2], RSMALL, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA( 2); cairo_arc(cr, x + sin[2], y + sin[1], RSMALL, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA( 3); cairo_arc(cr, x + sin[3], y + sin[0], RSMALL, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA( 4); cairo_arc(cr, x + sin[2], y - sin[1], RSMALL, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA( 5); cairo_arc(cr, x + sin[1], y - sin[2], RSMALL, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA( 6); cairo_arc(cr, x + sin[0], y - sin[3], RSMALL, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA( 7); cairo_arc(cr, x - sin[1], y - sin[2], RSMALL, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA( 8); cairo_arc(cr, x - sin[2], y - sin[1], RSMALL, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA( 9); cairo_arc(cr, x - sin[3], y - sin[0], RSMALL, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA(10); cairo_arc(cr, x - sin[2], y + sin[1], RSMALL, 0, TWO_PI); STEP_PAINT;
+	STEP_RGBA(11); cairo_arc(cr, x - sin[1], y + sin[2], RSMALL, 0, TWO_PI); STEP_PAINT;
 
 #undef STEP_PAINT
 #undef STEP_RGBA
+#undef RSMALL
+#undef RLARGE
 #undef TWO_PI
 }
 

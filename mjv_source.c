@@ -293,6 +293,7 @@ mjv_source_create (struct mjv_config_source *config)
 	if ((s = malloc(sizeof(*s))) == NULL) {
 		goto err;
 	}
+	s->name = NULL;
 	if ((s->buf = malloc(BUF_SIZE)) == NULL) {
 		goto err;
 	}

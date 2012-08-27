@@ -48,7 +48,7 @@ mjv_config_init (void)
 }
 
 void
-mjv_config_destroy (struct mjv_config *c)
+mjv_config_destroy (struct mjv_config *const c)
 {
 	g_assert(c != NULL);
 	g_assert(c->config != NULL);
@@ -60,8 +60,9 @@ mjv_config_destroy (struct mjv_config *c)
 }
 
 #define ADD_STRING(x,y) \
-	if (x == NULL) s->x = NULL; else { \
-		int len = strlen(x) + 1; \
+	if (x == NULL) s->x = NULL; \
+	else { \
+		size_t len = strlen(x) + 1; \
 		if ((s->x = g_try_malloc(len)) == NULL) { \
 			goto err_##y; \
 		} \
@@ -69,7 +70,7 @@ mjv_config_destroy (struct mjv_config *c)
 	}
 
 struct mjv_config_source *
-mjv_config_source_create_from_file (const char *name, const char *file, int usec)
+mjv_config_source_create_from_file (const char *const name, const char *const file, const int usec)
 {
 	struct mjv_config_source *s;
 
@@ -88,7 +89,7 @@ err_0:	return NULL;
 }
 
 struct mjv_config_source *
-mjv_config_source_create_from_network (const char *name, const char *host, const char *path, const char *user, const char *pass, int port)
+mjv_config_source_create_from_network (const char *const name, const char *const host, const char *const path, const char *const user, const char *const pass, const int port)
 {
 	struct mjv_config_source *s;
 
@@ -110,13 +111,12 @@ err_3:	g_free(s->host);
 err_2:	g_free(s->name);
 err_1:	g_free(s);
 err_0:	return NULL;
-
 }
 
 #undef ADD_STRING
 
 void
-mjv_config_source_destroy (struct mjv_config_source *s)
+mjv_config_source_destroy (struct mjv_config_source *const s)
 {
 	g_assert(s != NULL);
 
@@ -145,21 +145,21 @@ int mjv_config_source_get_port (const struct mjv_config_source *const s) { g_ass
 int mjv_config_source_get_usec (const struct mjv_config_source *const s) { g_assert(s != NULL); return s->usec; }
 
 bool
-mjv_config_read_file (struct mjv_config *c, const char *filename)
+mjv_config_read_file (struct mjv_config *const c, const char *const filename)
 {
-	if (config_read_file(c->config, filename) == CONFIG_FALSE) {
-		g_printerr("%s: %i: %s\n",
-			config_error_file(c->config),
-			config_error_line(c->config),
-			config_error_text(c->config)
-		);
-		return false;
+	if (config_read_file(c->config, filename) != CONFIG_FALSE) {
+		return true;
 	}
-	return true;
+	g_printerr("%s: %d: %s\n",
+		config_error_file(c->config),
+		config_error_line(c->config),
+		config_error_text(c->config)
+	);
+	return false;
 }
 
 const GList const *
-mjv_config_get_sources (struct mjv_config *c)
+mjv_config_get_sources (struct mjv_config *const c)
 {
 	unsigned int i;
 	unsigned int len;
@@ -191,7 +191,7 @@ mjv_config_get_sources (struct mjv_config *c)
 			config_setting_lookup_string(source, "name", &name);
 			config_setting_lookup_string(source, "file", &file);
 
-			if ((mjv_config_source = mjv_config_source_create_from_file(name, file, usec)) == NULL) {
+			if ((mjv_config_source = mjv_config_source_create_from_file( name, file, usec)) == NULL) {
 				// TODO error handling
 				continue;
 			}

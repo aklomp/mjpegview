@@ -80,7 +80,7 @@ static void callback_got_frame (struct mjv_frame *, void *);
 static void draw_blinker (cairo_t *, int, int, int);
 static void draw_spinner (cairo_t *, int, int, int);
 static void *spinner_thread_main (void *);
-static void framerate_insert_datapoint (struct mjv_thread *, struct timespec *);
+static void framerate_insert_datapoint (struct mjv_thread *, const struct timespec *const);
 static void framerate_estimator (struct mjv_thread *);
 static float timespec_diff (struct timespec *, struct timespec *);
 
@@ -547,7 +547,7 @@ framerate_thread_main (void *user_data)
 }
 
 static void
-framerate_insert_datapoint (struct mjv_thread *thread, struct timespec *ts)
+framerate_insert_datapoint (struct mjv_thread *thread, const struct timespec *const ts)
 {
 	g_mutex_lock(thread->framerate.mutex);
 

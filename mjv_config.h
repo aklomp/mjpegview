@@ -12,12 +12,12 @@ void mjv_config_source_destroy (struct mjv_config_source *);
 const GList const* mjv_config_get_sources (struct mjv_config *);
 
 // Getters
-int mjv_config_source_get_port (struct mjv_config_source *);
-int mjv_config_source_get_usec (struct mjv_config_source *);
-int mjv_config_source_get_type (struct mjv_config_source *);
-const char *mjv_config_source_get_file (struct mjv_config_source *);
-const char *mjv_config_source_get_name (struct mjv_config_source *);
-const char *mjv_config_source_get_host (struct mjv_config_source *);
-const char *mjv_config_source_get_path (struct mjv_config_source *);
-const char *mjv_config_source_get_user (struct mjv_config_source *);
-const char *mjv_config_source_get_pass (struct mjv_config_source *);
+int mjv_config_source_get_port (const struct mjv_config_source *const);
+int mjv_config_source_get_usec (const struct mjv_config_source *const);
+int mjv_config_source_get_type (const struct mjv_config_source *const);
+const char *mjv_config_source_get_file (const struct mjv_config_source *const);
+const char *mjv_config_source_get_name (const struct mjv_config_source *const);
+const char *mjv_config_source_get_host (const struct mjv_config_source *const);
+const char *mjv_config_source_get_path (const struct mjv_config_source *const);
+const char *mjv_config_source_get_user (const struct mjv_config_source *const);
+const char *mjv_config_source_get_pass (const struct mjv_config_source *const);

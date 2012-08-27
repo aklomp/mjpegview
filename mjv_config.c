@@ -134,15 +134,15 @@ mjv_config_source_destroy (struct mjv_config_source *s)
 	g_free(s);
 }
 
-const char *mjv_config_source_get_name (struct mjv_config_source *s) { g_assert(s != NULL); return s->name; }
-const char *mjv_config_source_get_file (struct mjv_config_source *s) { g_assert(s != NULL); return s->file; }
-const char *mjv_config_source_get_host (struct mjv_config_source *s) { g_assert(s != NULL); return s->host; }
-const char *mjv_config_source_get_path (struct mjv_config_source *s) { g_assert(s != NULL); return s->path; }
-const char *mjv_config_source_get_user (struct mjv_config_source *s) { g_assert(s != NULL); return s->user; }
-const char *mjv_config_source_get_pass (struct mjv_config_source *s) { g_assert(s != NULL); return s->pass; }
-int mjv_config_source_get_type (struct mjv_config_source *s) { g_assert(s != NULL); return s->type; }
-int mjv_config_source_get_port (struct mjv_config_source *s) { g_assert(s != NULL); return s->port; }
-int mjv_config_source_get_usec (struct mjv_config_source *s) { g_assert(s != NULL); return s->usec; }
+const char *mjv_config_source_get_name (const struct mjv_config_source *const s) { g_assert(s != NULL); return s->name; }
+const char *mjv_config_source_get_file (const struct mjv_config_source *const s) { g_assert(s != NULL); return s->file; }
+const char *mjv_config_source_get_host (const struct mjv_config_source *const s) { g_assert(s != NULL); return s->host; }
+const char *mjv_config_source_get_path (const struct mjv_config_source *const s) { g_assert(s != NULL); return s->path; }
+const char *mjv_config_source_get_user (const struct mjv_config_source *const s) { g_assert(s != NULL); return s->user; }
+const char *mjv_config_source_get_pass (const struct mjv_config_source *const s) { g_assert(s != NULL); return s->pass; }
+int mjv_config_source_get_type (const struct mjv_config_source *const s) { g_assert(s != NULL); return s->type; }
+int mjv_config_source_get_port (const struct mjv_config_source *const s) { g_assert(s != NULL); return s->port; }
+int mjv_config_source_get_usec (const struct mjv_config_source *const s) { g_assert(s != NULL); return s->usec; }
 
 bool
 mjv_config_read_file (struct mjv_config *c, const char *filename)

@@ -11,6 +11,8 @@
 #include "mjv_source.h"
 #include "mjv_thread.h"
 
+#define UNUSED_PARAM(x)		(void)(x)
+
 enum state
 { STATE_DISCONNECTED
 , STATE_CONNECTING
@@ -122,7 +124,7 @@ print_source_name (cairo_t *cr, const char *name)
 static gboolean
 canvas_repaint (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 {
-	(void)event;
+	UNUSED_PARAM(event);
 	const char *source_name;
 	struct mjv_thread *t = (struct mjv_thread *)(user_data);
 
@@ -382,8 +384,8 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 	thread->width  = width;
 	thread->height = height;
 
-	if (height != (unsigned int)thread->canvas->allocation.height
-	 || width != (unsigned int)thread->canvas->allocation.width) {
+	if ((int)height != thread->canvas->allocation.height
+	 || (int)width != thread->canvas->allocation.width) {
 		gtk_widget_set_size_request(thread->canvas, width, height);
 	}
 	// Replace existing pixbuf:

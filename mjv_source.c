@@ -32,7 +32,7 @@
 
 // The number of bytes between the anchor and the cur pointer,
 // inclusive:
-#define LINE_LEN	(s->cur - s->anchor + 1)
+#define LINE_LEN	(unsigned int)(s->cur + 1 - s->anchor)
 
 // Compare the 16-bit value at a certain location with a constant:
 #define VALUE_AT(x,y)	(*((guint16 *)(x)) == GUINT16_FROM_BE(y))
@@ -627,18 +627,18 @@ state_find_boundary (struct mjv_source *s)
 		else {
 			// Complete boundary not yet found, and we have a non-matching character;
 			// restart the scan:
-			if (LINE_LEN <= (ptrdiff_t)s->boundary_len && *s->cur != s->boundary[s->cur - s->anchor]) {
+			if (LINE_LEN <= s->boundary_len && *s->cur != s->boundary[s->cur - s->anchor]) {
 				s->cur = s->anchor + 1;
 				s->anchor = NULL;
 			}
 			// If successfully found boundary plus one byte, and that byte is \n, then success:
-			if (LINE_LEN == (ptrdiff_t)s->boundary_len + 1 && *s->cur == (char)0x0a) {
+			if (LINE_LEN == s->boundary_len + 1 && *s->cur == (char)0x0a) {
 				s->anchor = NULL;
 				s->state = STATE_HTTP_SUBHEADER;
 				break;
 			}
 			// If successfully found boundary plus two bytes...
-			if (LINE_LEN == (ptrdiff_t)s->boundary_len + 2) {
+			if (LINE_LEN == s->boundary_len + 2) {
 				// ..and those two bytes are \r\n, then success...
 				if (VALUE_AT(s->cur - 1, 0x0d0a)) {
 					s->anchor = NULL;
@@ -755,12 +755,8 @@ static int
 state_image_by_content_length (struct mjv_source *s)
 {
 #define BYTES_LEFT_IN_BUF (s->head - s->cur - 1)
-#define BYTES_FOUND  (s->cur - s->anchor + 1)
-#define BYTES_NEEDED ((ptrdiff_t)s->content_length - BYTES_FOUND)
-
-	g_assert(BYTES_LEFT_IN_BUF >= 0);
-	g_assert(BYTES_FOUND >= 0);
-	g_assert(BYTES_NEEDED >= 0);
+#define BYTES_FOUND  (s->cur + 1 - s->anchor)
+#define BYTES_NEEDED (ptrdiff_t)(s->content_length - BYTES_FOUND)
 
 	// If we have a content-length > 0, then trust it; read out
 	// exactly that many bytes before finding the boundary again.
@@ -885,7 +881,7 @@ interpret_content_type (struct mjv_source *s, char *line, unsigned int line_len)
 	cur = line + STR_LEN(header_content_type_one);
 	last = line + line_len - 1;
 
-#define SIZE_LEFT	(last - cur + 1)
+#define SIZE_LEFT	(unsigned int)(last + 1 - cur)
 #define SKIP_SPACES	while (*cur == ' ') { if (cur++ == last) return CORRUPT_HEADER; }
 #define STRING_MATCH(x)	(SIZE_LEFT >= (ptrdiff_t)STR_LEN(x) && strncmp(cur, x, STR_LEN(x)) == 0)
 

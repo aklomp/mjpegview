@@ -11,7 +11,7 @@ enum mjv_source_status
 };
 
 struct mjv_source *mjv_source_create (struct mjv_config_source *);
-bool mjv_source_open (struct mjv_source *);
+bool mjv_source_open (struct mjv_source *const);
 void mjv_source_destroy (struct mjv_source *);
 
 // The main function. This grabs frames from the source and relays them

@@ -1,5 +1,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
+#include <sys/select.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <unistd.h>	// close()
 #include <fcntl.h>
@@ -8,12 +10,9 @@
 #include <glib.h>
 #include <glib/gprintf.h>
 #include <errno.h>
-#include <sys/types.h>
-#include <sys/socket.h>
 #include <netdb.h>	// hints
 #include <time.h>	// clock_gettime()
 #include <unistd.h>	// open(), write(), close()
-#include <sys/select.h>
 #include <arpa/inet.h>
 #include <assert.h>
 #include <pthread.h>
@@ -35,7 +34,8 @@
 #define LINE_LEN	(unsigned int)(s->cur + 1 - s->anchor)
 
 // Compare the 16-bit value at a certain location with a constant:
-#define VALUE_AT(x,y)	(*((guint16 *)(x)) == GUINT16_FROM_BE(y))
+#define U16_BYTESWAP(y)	(((((uint16_t)y) >> 8) & 0xFF) | ((((uint16_t)y) & 0xFF) << 8))
+#define VALUE_AT(x,y)	(*((uint16_t *)(x)) == U16_BYTESWAP(y))
 
 // Debug print functions:
 #if 0
@@ -177,15 +177,12 @@ err:	g_free(base64_auth_string);
 }
 
 bool
-mjv_source_open (struct mjv_source *s)
+mjv_source_open (struct mjv_source *const s)
 {
-	int type = mjv_config_source_get_type(s->config);
-
-	if (type == TYPE_FILE) {
-		return mjv_source_open_file(s);
-	}
-	if (type == TYPE_NETWORK) {
-		return mjv_source_open_network(s);
+	switch (mjv_config_source_get_type(s->config))
+	{
+		case TYPE_FILE:    return mjv_source_open_file(s);
+		case TYPE_NETWORK: return mjv_source_open_network(s);
 	}
 	return false;
 }
@@ -329,7 +326,6 @@ mjv_source_create (struct mjv_config_source *config)
 		g_printerr("Not enough space to g_snprintf() the default camera name\n");
 		goto err;
 	}
-	// Return the new object:
 	return s;
 
 err:	if (s != NULL) {
@@ -362,6 +358,7 @@ mjv_source_destroy (struct mjv_source *s)
 unsigned int
 mjv_source_set_name (struct mjv_source *const s, const char *const name)
 {
+	char *c;
 	size_t name_len;
 
 	assert(s != NULL);
@@ -372,10 +369,11 @@ mjv_source_set_name (struct mjv_source *const s, const char *const name)
 		return 0;
 	}
 	// Destroy any existing name, reserve memory:
-	s->name = realloc(s->name, name_len + 1);
-
+	if ((c = realloc(s->name, name_len + 1)) == NULL) {
+		return 0;
+	}
 	// Copy name plus terminator into memory:
-	memcpy(s->name, name, name_len + 1);
+	memcpy(s->name = c, name, name_len + 1);
 	return 1;
 }
 
@@ -429,9 +427,10 @@ adjust_streambuf (struct mjv_source *s)
 		s->cur -= offset;
 		s->head -= offset;
 		s->anchor -= offset;
+		return;
 	}
 	// Else if no anchor, reset to start of buffer:
-	else if (s->anchor == NULL) {
+	if (s->anchor == NULL) {
 		s->cur = s->head = s->buf;
 	}
 }
@@ -935,7 +934,6 @@ interpret_content_type (struct mjv_source *s, char *line, unsigned int line_len)
 					return READ_ERROR;
 				}
 				memcpy(s->boundary, cur, s->boundary_len);
-				// Zero-terminate:
 				s->boundary[s->boundary_len] = 0;
 			}
 		}

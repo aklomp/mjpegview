@@ -1,16 +1,13 @@
+#include <stdlib.h>	// malloc()
 #include <time.h>	// clock_gettime()
 #include <errno.h>
-#include <stdlib.h>
-#include <stdio.h>	// FILE, for jpeglib.h
+#include <stdio.h>
 #include <string.h>	// memcpy()
 #include <jpeglib.h>
 #include <glib.h>
 #include <assert.h>
 #include <jerror.h>
 #include <setjmp.h>
-
-const char *err_malloc  = "Memory allocation failed";
-const char *err_unknown = "Unknown error";
 
 struct mjv_frame {
 	struct timespec *timestamp;
@@ -32,20 +29,23 @@ struct my_jpeg_error_mgr {
 #define malloc_fail(s)   ((s = malloc(sizeof(*(s)))) == NULL)
 
 struct mjv_frame *
-mjv_frame_create (char *rawbits, unsigned int num_rawbits)
+mjv_frame_create (const char *const rawbits, const unsigned int num_rawbits)
 {
 	struct mjv_frame *f = NULL;
 	struct timespec timestamp;
 
 	// First thing, timestamp this frame:
 	if (clock_gettime(CLOCK_REALTIME, &timestamp) != 0) {
-		g_printerr(g_strerror(errno));
-		goto err;
+		timestamp.tv_sec = timestamp.tv_nsec = 0;
 	}
 	// Allocate structure:
 	if (malloc_fail(f)) {
 		goto err;
 	}
+	f->error = NULL;
+	f->timestamp = NULL;
+	f->rawbits = NULL;
+
 	// Allocate timestamp struct:
 	if (malloc_fail(f->timestamp)) {
 		goto err;
@@ -62,12 +62,9 @@ mjv_frame_create (char *rawbits, unsigned int num_rawbits)
 
 	// Set default values:
 	f->num_rawbits = num_rawbits;
-	f->error = NULL;
 	f->width = 0;
 	f->height = 0;
 	f->successfully_decoded = 0;
-
-	// Successful return:
 	return f;
 
 err:	if (f != NULL) {
@@ -80,7 +77,7 @@ err:	if (f != NULL) {
 }
 
 void
-mjv_frame_destroy (struct mjv_frame *f)
+mjv_frame_destroy (struct mjv_frame *const f)
 {
 	if (f != NULL) {
 		free(f->error);
@@ -94,8 +91,8 @@ mjv_frame_destroy (struct mjv_frame *f)
 static void
 on_jpeg_error (j_common_ptr cinfo)
 {
-	// Jump back to original function:
-	longjmp(((struct my_jpeg_error_mgr *)(cinfo->err))->setjmp_buffer, 1);
+	// Jump back to setjmp() in caller:
+	longjmp(((struct my_jpeg_error_mgr*)(cinfo->err))->setjmp_buffer, 1);
 }
 
 unsigned char *
@@ -111,17 +108,19 @@ mjv_frame_to_pixbuf (struct mjv_frame *f)
 	// actually decode the image).
 	// Caaller is responsible for freeing the resulting pixmap.
 
-	assert(f != NULL);
-
 	// Use a custom error exit; libjpeg just calls exit()
-	cinfo.err = jpeg_std_error( &jerr.pub );
+	cinfo.err = jpeg_std_error(&jerr.pub);
 	jerr.pub.error_exit = on_jpeg_error;
-	if (setjmp(jerr.setjmp_buffer)) {
+	if (setjmp(jerr.setjmp_buffer))
+	{
+		char *c;
 		char jpeg_errmsg[JMSG_LENGTH_MAX];
+
 		jerr.pub.format_message((j_common_ptr)(&cinfo), jpeg_errmsg);
 		size_t len = strlen(jpeg_errmsg) + 1;
-		f->error = g_realloc(f->error, len);
-		memcpy(f->error, jpeg_errmsg, len);
+		if ((c = realloc(f->error, len)) != NULL) {
+			memcpy(f->error = c, jpeg_errmsg, len);
+		}
 		jpeg_destroy_decompress(&cinfo);
 		f->successfully_decoded = 0;
 		return NULL;
@@ -148,7 +147,6 @@ mjv_frame_to_pixbuf (struct mjv_frame *f)
 	if ((pixbuf = malloc(cinfo.output_height * f->row_stride)) == NULL) {
 		return NULL;
 	}
-	// FIXME error checking or somehting!!
 	while (cinfo.output_scanline < cinfo.output_height) {
 		row_pointer = &pixbuf[cinfo.output_scanline * f->row_stride];
 		jpeg_read_scanlines(&cinfo, &row_pointer, 1);
@@ -156,28 +154,24 @@ mjv_frame_to_pixbuf (struct mjv_frame *f)
 	jpeg_finish_decompress(&cinfo);
 	jpeg_destroy_decompress(&cinfo);
 	f->successfully_decoded = 1;
-
 	return pixbuf;
 }
 
 unsigned int
 mjv_frame_get_width (const struct mjv_frame *const frame)
 {
-	assert(frame != NULL);
 	return frame->width;
 }
 
 unsigned int
 mjv_frame_get_height (const struct mjv_frame *const frame)
 {
-	assert(frame != NULL);
 	return frame->height;
 }
 
 unsigned int
 mjv_frame_get_row_stride (const struct mjv_frame *const frame)
 {
-	g_assert(frame != NULL);
 	return frame->row_stride;
 }
 

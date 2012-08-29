@@ -9,15 +9,6 @@ GLIB_LDFLAGS = `pkg-config --libs glib-2.0`
 
 PROG = mjpegview
 
-OBJS = \
-  mjv_config.o \
-  mjv_frame.o \
-  mjv_framebuf.o \
-  mjv_gui.o \
-  mjv_main.o \
-  mjv_source.o \
-  mjv_thread.o
-
 # These object files depend only on GLib:
 OBJS_GLIB = \
   mjv_config.o \
@@ -31,8 +22,11 @@ OBJS_GTK = \
   mjv_gui.o \
   mjv_thread.o
 
-$(PROG): $(OBJS_GLIB) $(OBJS_GTK)
+$(PROG): $(OBJS) $(OBJS_GLIB) $(OBJS_GTK)
 	$(CC) $(LDFLAGS) $(GLIB_LDFLAGS) $(GTK_LDFLAGS) $^ -o $@
+
+$(OBJS): %o: %c
+	$(CC) $(CFLAGS) -c $^ -o $@
 
 $(OBJS_GLIB): %.o: %.c
 	$(CC) $(CFLAGS) $(GLIB_CFLAGS) -c $^ -o $@
@@ -41,4 +35,4 @@ $(OBJS_GTK): %.o: %.c
 	$(CC) $(CFLAGS) $(GLIB_CFLAGS) $(GTK_CFLAGS) -c $^ -o $@
 
 clean:
-	rm -f $(PROG) $(OBJS_GLIB) $(OBJS_GTK)
+	rm -f $(PROG) $(OBJS) $(OBJS_GLIB) $(OBJS_GTK)

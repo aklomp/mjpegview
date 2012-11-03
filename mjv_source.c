@@ -340,7 +340,9 @@ err:	if (s != NULL) {
 void
 mjv_source_destroy (struct mjv_source *s)
 {
-	assert(s != NULL);
+	if (s == NULL) {
+		return;
+	}
 	if (s->fd >= 0 && close(s->fd) < 0) {
 		Debug("%s\n", g_strerror(errno));
 	}
@@ -362,9 +364,6 @@ mjv_source_set_name (struct mjv_source *const s, const char *const name)
 	char *c;
 	size_t name_len;
 
-	assert(s != NULL);
-	assert(name != NULL);
-
 	// Check string length for ridiculousness:
 	if ((name_len = strlen(name)) > 100) {
 		return 0;
@@ -381,7 +380,6 @@ mjv_source_set_name (struct mjv_source *const s, const char *const name)
 void
 mjv_source_set_callback (struct mjv_source *s, void (*got_frame_callback)(struct mjv_frame*, void*), void *user_pointer)
 {
-	g_assert(s != NULL);
 	s->callback = got_frame_callback;
 	s->user_pointer = user_pointer;
 }
@@ -416,11 +414,6 @@ adjust_streambuf (struct mjv_source *s)
 
 	// How much bytes left from keep till end?
 	unsigned int good_bytes = s->head - keepfrom;
-
-	g_assert(s->buf != NULL);
-	g_assert(keepfrom != NULL);
-	g_assert(s->buf <= keepfrom);
-	g_assert(s->head >= keepfrom);
 
 	// If important bytes left in buffer at an offset, move them:
 	if (good_bytes > 0 && offset > 0) {

@@ -8,18 +8,22 @@ GLIB_LDFLAGS = `pkg-config --libs glib-2.0`
 .PHONY: clean
 
 PROG = mjpegview
+MJVSINGLE_PROG = mjvsingle
+
+all: $(PROG) $(MJVSINGLE_PROG)
 
 # These object files do not depend on GLib or GTK+-2:
 OBJS = \
+  mjv_config_source.o \
   mjv_frame.o \
-  mjv_log.o
+  mjv_log.o \
+  mjv_source.o
 
 # These object files depend only on GLib:
 OBJS_GLIB = \
   mjv_config.o \
   mjv_framebuf.o \
-  mjv_main.o \
-  mjv_source.o
+  mjv_main.o
 
 # These object files depend on GLib and GTK+-2:
 OBJS_GTK = \
@@ -38,5 +42,15 @@ $(OBJS_GLIB): %.o: %.c
 $(OBJS_GTK): %.o: %.c
 	$(CC) $(CFLAGS) $(GLIB_CFLAGS) $(GTK_CFLAGS) -c $^ -o $@
 
+MJVSINGLE_OBJS = mjvsingle.o
+MJVSINGLE_CFLAGS = -O2 -Werror -Wall -Wextra -fomit-frame-pointer -pipe
+MJVSINGLE_LDFLAGS = -ljpeg -lrt
+
+$(MJVSINGLE_PROG): $(MJVSINGLE_OBJS) mjv_config_source.o mjv_source.o mjv_frame.o
+	$(CC) $(MJVSINGLE_LDFLAGS) $^ -o $@
+
+$(MJVSINGLE_OBJS): %.o: %.c
+	$(CC) $(MJVSINGLE_CFLAGS) -c $^ -o $@
+
 clean:
-	rm -f $(PROG) $(OBJS) $(OBJS_GLIB) $(OBJS_GTK)
+	rm -f $(PROG) $(OBJS) $(OBJS_GLIB) $(OBJS_GTK) $(MJVSINGLE_OBJS) $(MJVSINGLE_PROG)

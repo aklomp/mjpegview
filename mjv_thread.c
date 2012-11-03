@@ -8,6 +8,7 @@
 
 #include "mjv_frame.h"
 #include "mjv_framebuf.h"
+#include "mjv_config_source.h"
 #include "mjv_source.h"
 #include "mjv_thread.h"
 
@@ -62,6 +63,7 @@ struct mjv_thread {
 	unsigned int height;
 	unsigned int blinker;
 	struct spinner spinner;
+	struct mjv_config_source *cs;
 	struct mjv_source *source;
 	struct mjv_framebuf *framebuf;
 	struct framerate framerate;
@@ -151,7 +153,7 @@ canvas_repaint (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 	}
 	cairo_paint(t->cairo);
 
-	if ((source_name = mjv_source_get_name(t->source)) != NULL) {
+	if ((source_name = mjv_config_source_get_name(t->cs)) != NULL) {
 		print_source_name(t->cairo, source_name);
 	}
 	if (t->state == STATE_CONNECTING) {
@@ -166,7 +168,7 @@ canvas_repaint (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 }
 
 struct mjv_thread *
-mjv_thread_create (struct mjv_source *source)
+mjv_thread_create (struct mjv_config_source *cs)
 {
 	// This function creates a thread object, but does not run it.
 	// To run, call mjv_thread_run on the thread object.
@@ -180,7 +182,8 @@ mjv_thread_create (struct mjv_source *source)
 
 	t->width   = 640;
 	t->height  = 480;
-	t->source  = source;
+	t->cs      = cs;
+	t->source  = NULL;
 	t->mutex   = g_mutex_new();
 	t->canvas  = gtk_drawing_area_new();
 	t->state   = STATE_DISCONNECTED;
@@ -310,16 +313,23 @@ thread_main (void *user_data)
 	// The thread will then only cancel when waiting for IO.
 	pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
 
-	mjv_source_set_callback(t->source, &callback_got_frame, (void *)t);
-
 	// Try to connect:
 	update_state(t, STATE_CONNECTING);
 	mjv_thread_show_spinner(t);
-	if (mjv_source_open(t->source) == 0) {
+
+	// Open source file descriptor:
+	if (mjv_config_source_open(t->cs) == 0) {
 		mjv_thread_hide_spinner(t);
 		update_state(t, STATE_DISCONNECTED);
 		return NULL;
 	}
+	if ((t->source = mjv_source_create(t->cs)) == NULL) {
+		mjv_thread_hide_spinner(t);
+		update_state(t, STATE_DISCONNECTED);
+		return NULL;
+	}
+	mjv_source_set_callback(t->source, &callback_got_frame, (void *)t);
+
 	// We are connected:
 	update_state(t, STATE_CONNECTED);
 	mjv_thread_hide_spinner(t);

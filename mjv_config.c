@@ -5,6 +5,7 @@
 #include <libconfig.h>
 
 #include "mjv_log.h"
+#include "mjv_config_source.h"
 #include "mjv_config.h"
 
 #define malloc_fail(s)   ((s = malloc(sizeof(*(s)))) == NULL)
@@ -13,24 +14,6 @@
 struct mjv_config {
 	config_t *config;
 	GList *sources;
-};
-
-struct mjv_config_source {
-	char *name;
-	int   type;
-	union {
-		struct {
-			int   port;
-			char *host;
-			char *path;
-			char *user;
-			char *pass;
-		};
-		struct {
-			char *file;
-			unsigned int usec;
-		};
-	};
 };
 
 struct mjv_config *
@@ -59,89 +42,6 @@ mjv_config_destroy (struct mjv_config *const c)
 	free(c);
 }
 
-#define ADD_STRING(x,y) \
-	if (x == NULL) s->x = NULL; \
-	else { \
-		size_t len = strlen(x) + 1; \
-		if ((s->x = malloc(len)) == NULL) { \
-			goto err_##y; \
-		} \
-		memcpy(s->x, x, len); \
-	}
-
-struct mjv_config_source *
-mjv_config_source_create_from_file (const char *const name, const char *const file, const int usec)
-{
-	struct mjv_config_source *s;
-
-	if (malloc_fail(s)) {
-		goto err_0;
-	}
-	s->type = TYPE_FILE;
-	s->usec = usec;
-	ADD_STRING(name, 1);
-	ADD_STRING(file, 2);
-	return s;
-
-err_2:	free(s->name);
-err_1:	free(s);
-err_0:	return NULL;
-}
-
-struct mjv_config_source *
-mjv_config_source_create_from_network (const char *const name, const char *const host, const char *const path, const char *const user, const char *const pass, const int port)
-{
-	struct mjv_config_source *s;
-
-	if (malloc_fail(s)) {
-		goto err_0;
-	}
-	s->type = TYPE_NETWORK;
-	s->port = port;
-	ADD_STRING(name, 1);
-	ADD_STRING(host, 2);
-	ADD_STRING(path, 3);
-	ADD_STRING(user, 4);
-	ADD_STRING(pass, 5);
-	return s;
-
-err_5:	free(s->user);
-err_4:	free(s->path);
-err_3:	free(s->host);
-err_2:	free(s->name);
-err_1:	free(s);
-err_0:	return NULL;
-}
-
-#undef ADD_STRING
-
-void
-mjv_config_source_destroy (struct mjv_config_source *const s)
-{
-	if (s->type == TYPE_NETWORK) {
-		free(s->name);
-		free(s->host);
-		free(s->path);
-		free(s->user);
-		free(s->pass);
-	}
-	else if (s->type == TYPE_FILE) {
-		free(s->name);
-		free(s->file);
-	}
-	free(s);
-}
-
-const char *mjv_config_source_get_name (const struct mjv_config_source *const s) { return s->name; }
-const char *mjv_config_source_get_file (const struct mjv_config_source *const s) { return s->file; }
-const char *mjv_config_source_get_host (const struct mjv_config_source *const s) { return s->host; }
-const char *mjv_config_source_get_path (const struct mjv_config_source *const s) { return s->path; }
-const char *mjv_config_source_get_user (const struct mjv_config_source *const s) { return s->user; }
-const char *mjv_config_source_get_pass (const struct mjv_config_source *const s) { return s->pass; }
-int mjv_config_source_get_type (const struct mjv_config_source *const s) { return s->type; }
-int mjv_config_source_get_port (const struct mjv_config_source *const s) { return s->port; }
-int mjv_config_source_get_usec (const struct mjv_config_source *const s) { return s->usec; }
-
 bool
 mjv_config_read_file (struct mjv_config *const c, const char *const filename)
 {
@@ -156,7 +56,7 @@ mjv_config_read_file (struct mjv_config *const c, const char *const filename)
 	return false;
 }
 
-const GList const *
+GList *
 mjv_config_get_sources (struct mjv_config *const c)
 {
 	unsigned int i;

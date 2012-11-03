@@ -1,26 +1,16 @@
 #include <stdbool.h>
-#include <sys/types.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <unistd.h>	// close()
-#include <fcntl.h>
-#include <stdlib.h>	// malloc(), free()
-#include <string.h>	// strncmp(), memcpy()
-#include <glib.h>
-#include <glib/gprintf.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdint.h>
 #include <errno.h>
-#include <netdb.h>	// hints
-#include <time.h>	// clock_gettime()
-#include <unistd.h>	// open(), write(), close()
-#include <arpa/inet.h>
-#include <assert.h>
+#include <time.h>
+#include <unistd.h>
 #include <pthread.h>
 
 #include "mjv_log.h"
-#include "mjv_config.h"
+#include "mjv_config_source.h"
 #include "mjv_frame.h"
-#include "mjv_framebuf.h"
 #include "mjv_source.h"
 
 // Buffer must be large enough to hold the entire JPEG frame:
@@ -68,9 +58,8 @@ char header_content_length_two[] = "Content-length:";
 
 static unsigned int last_id = 0;
 
-struct mjv_source {
-	int fd;
-	char *name;		// pretty name for this camera
+struct mjv_source
+{
 	int nread;		// return value of read();
 	int mimetype;
 	int state;		// state machine state
@@ -81,7 +70,6 @@ struct mjv_source {
 	unsigned int response_code;
 	unsigned int content_length;
 	struct timespec last_emitted;
-	struct mjv_framebuf *framebuf;
 	struct mjv_config_source *config;
 
 	char *buf;	// read buffer;
@@ -95,14 +83,13 @@ struct mjv_source {
 	void *user_pointer;
 };
 
-static bool mjv_source_open_file (struct mjv_source *);
-static bool mjv_source_open_network (struct mjv_source *);
 static int fetch_header_line (struct mjv_source *, char **, unsigned int *);
 static inline int increment_cur (struct mjv_source *);
 static inline bool is_numeric (char);
 static inline unsigned int simple_atoi (const char *, const char *);
 static int interpret_content_type (struct mjv_source *, char *, unsigned int);
 static bool got_new_frame (struct mjv_source *, char *, unsigned int);
+static void adjust_streambuf (struct mjv_source *);
 static void artificial_delay (unsigned int, struct timespec *);
 
 static int state_http_banner (struct mjv_source *);
@@ -113,193 +100,21 @@ static int state_find_image (struct mjv_source *);
 static int state_image_by_content_length (struct mjv_source *);
 static int state_image_by_eof_search (struct mjv_source *);
 
-static bool
-write_http_request (const int fd, const char *path, const char *username, const char *password)
-{
-	GString *buffer = NULL;
-	char *auth_string = NULL;
-	gchar *base64_auth_string = NULL;
-	char crlf[] = "\r\n";
-	char keep_alive[] = "Connection: Keep-Alive\r\n";
-
-#define SAFE_WRITE(x, y) \
-		do { \
-			if (write(fd, x, y) != (ssize_t)y) { \
-				Debug("Write failed\n"); \
-				goto err; \
-			} \
-		} while (0)
-
-#define SAFE_WRITE_STR(x) \
-		SAFE_WRITE(x, STR_LEN(x))
-
-	DebugEntry();
-
-	unsigned int username_len = (username == NULL) ? 0 : strlen(username);
-	unsigned int password_len = (password == NULL) ? 0 : strlen(password);
-
-	// We have to write entire header lines at a time; at least one IP
-	// camera closes its connection if it receives only a GET and then
-	// a pause between the next write.
-
-	buffer = g_string_sized_new(80);
-	g_string_printf(buffer, "GET %s HTTP/1.0\r\n", path);
-	SAFE_WRITE(buffer->str, buffer->len);
-	SAFE_WRITE_STR(keep_alive);
-
-	// Add basic authentication header if credentials passed:
-	if (username != NULL && password != NULL)
-	{
-		// The auth string is 'username:password':
-		if ((auth_string = malloc(username_len + password_len + 1)) == NULL) {
-			goto err;
-		}
-		memcpy(auth_string, username, username_len);
-		auth_string[username_len] = ':';
-		memcpy(auth_string + username_len + 1, password, password_len);
-		base64_auth_string = g_base64_encode((guchar *)auth_string, (gsize)(username_len + password_len + 1));
-		g_string_printf(buffer, "Authorization: Basic %s\r\n", base64_auth_string);
-		SAFE_WRITE(buffer->str, buffer->len);
-		g_free(base64_auth_string);
-		free(auth_string);
-		base64_auth_string = auth_string = NULL;
-	}
-	SAFE_WRITE_STR(crlf);
-	g_string_free(buffer, TRUE);
-	return true;
-
-#undef SAFE_WRITE_STR
-#undef SAFE_WRITE
-
-err:	g_free(base64_auth_string);
-	free(auth_string);
-	g_string_free(buffer, TRUE);
-	return false;
-}
-
-bool
-mjv_source_open (struct mjv_source *const s)
-{
-	switch (mjv_config_source_get_type(s->config))
-	{
-		case TYPE_FILE:    return mjv_source_open_file(s);
-		case TYPE_NETWORK: return mjv_source_open_network(s);
-	}
-	return false;
-}
-
-static bool
-mjv_source_open_file (struct mjv_source *s)
-{
-	const char *file = mjv_config_source_get_file(s->config);
-	s->delay_usec = mjv_config_source_get_usec(s->config);
-
-	if ((s->fd = open(file, O_RDONLY)) < 0) {
-		log_error("%s: %s\n", strerror(errno), file);
-		return false;
-	}
-	return true;
-}
-
-static bool
-mjv_source_open_network (struct mjv_source *s)
-{
-	int fd = -1;
-	char port_string[6];
-	struct addrinfo hints;
-	struct addrinfo *result;
-	struct addrinfo *rp;
-
-	       int  port = mjv_config_source_get_port(s->config);
-	const char *host = mjv_config_source_get_host(s->config);
-	const char *path = mjv_config_source_get_path(s->config);
-	const char *user = mjv_config_source_get_user(s->config);
-	const char *pass = mjv_config_source_get_pass(s->config);
-
-	// FIXME: all char* arguments are assumed to be null-terminated,
-	// but all of them come from user input! Don't be so trusting.
-
-	Debug("host: %s\n", host);
-	Debug("port: %i\n", port);
-	Debug("path: %s\n", path);
-	Debug("user: %s\n", user);
-	Debug("pass: %s\n", pass);
-
-	memset(&hints, 0, sizeof(struct addrinfo));
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = 0;
-	hints.ai_protocol = IPPROTO_TCP;
-
-	// Second argument of getaddrinfo() is the port number,
-	// as a string; so snprintf() it:
-	if (port > 65535) {
-		log_error("Implausible port\n");
-		goto err;
-	}
-	g_snprintf(port_string, sizeof(port_string), "%u", port);
-
-	if (getaddrinfo(host, port_string, &hints, &result) != 0) {
-		log_error("%s\n", strerror(errno));
-		goto err;
-	}
-	// Loop over all results, try them until we find
-	// a descriptor that works:
-	for (rp = result; rp; rp = rp->ai_next) {
-		if ((fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) < 0) {
-			continue;
-		}
-		if (connect(fd, rp->ai_addr, rp->ai_addrlen) >= 0) {
-			break;
-		}
-		close(fd);
-	}
-	// Free result data:
-	freeaddrinfo(result);
-
-	// Quit if none of the results worked:
-	if (rp == NULL) {
-		log_debug("Could not connect\n");
-		goto err;
-	}
-	Debug("Connected\n");
-
-	// Write the HTTP request:
-	if (!write_http_request(fd, path, user, pass)) {
-		log_debug("Could not write HTTP request\n");
-		goto err;
-	}
-	log_debug("Wrote http request\n");
-
-	// The response is handled by the stream decoder. We're done:
-	s->fd = fd;
-	return true;
-
-err:	if (fd >= 0) {
-		close(fd);
-	}
-	return false;
-}
-
 struct mjv_source *
 mjv_source_create (struct mjv_config_source *config)
 {
-	int ret;
 	struct mjv_source *s = NULL;
 
 	// Allocate memory for the structure:
 	if ((s = malloc(sizeof(*s))) == NULL) {
 		goto err;
 	}
-	s->name = NULL;
 	if ((s->buf = malloc(BUF_SIZE)) == NULL) {
 		goto err;
 	}
 	// Set default values:
-	s->fd = -1;
 	s->id = ++last_id;	// First created camera has id #1
 	s->boundary = NULL;
-	s->framebuf = NULL;
 	s->mimetype = -1;
 	s->content_length = 0;
 	s->delay_usec = 0;
@@ -314,23 +129,9 @@ mjv_source_create (struct mjv_config_source *config)
 	s->anchor = NULL;
 	s->cur = s->head = s->buf;
 
-	// Set a default name based on the ID:
-	if ((s->name = malloc(15)) == NULL) {
-		goto err;
-	}
-	ret = g_snprintf(s->name, 15, "Camera %u", s->id);
-	if (ret < 0) {
-		log_error("Could not g_snprintf() the default camera name\n");
-		goto err;
-	}
-	if (ret >= 15) {
-		log_error("Not enough space to g_snprintf() the default camera name\n");
-		goto err;
-	}
 	return s;
 
 err:	if (s != NULL) {
-		free(s->name);
 		free(s->buf);
 		free(s);
 	}
@@ -343,38 +144,10 @@ mjv_source_destroy (struct mjv_source *s)
 	if (s == NULL) {
 		return;
 	}
-	if (s->fd >= 0 && close(s->fd) < 0) {
-		Debug("%s\n", g_strerror(errno));
-	}
-	if (s->name != NULL) {
-		log_info("Destroying source %s\n", s->name);
-		free(s->name);
-	}
+	log_info("Destroying source %s\n", mjv_config_source_get_name(s->config));
 	free(s->boundary);
-	if (s->framebuf != NULL) {
-		mjv_framebuf_destroy(s->framebuf);
-	}
 	free(s->buf);
 	free(s);
-}
-
-unsigned int
-mjv_source_set_name (struct mjv_source *const s, const char *const name)
-{
-	char *c;
-	size_t name_len;
-
-	// Check string length for ridiculousness:
-	if ((name_len = strlen(name)) > 100) {
-		return 0;
-	}
-	// Destroy any existing name, reserve memory:
-	if ((c = realloc(s->name, name_len + 1)) == NULL) {
-		return 0;
-	}
-	// Copy name plus terminator into memory:
-	memcpy(s->name = c, name, name_len + 1);
-	return 1;
 }
 
 void
@@ -384,17 +157,9 @@ mjv_source_set_callback (struct mjv_source *s, void (*got_frame_callback)(struct
 	s->user_pointer = user_pointer;
 }
 
-const char *
-mjv_source_get_name (const struct mjv_source *const s)
-{
-	assert(s != NULL);
-	return s->name;
-}
-
 unsigned int
 mjv_source_get_id (const struct mjv_source *const s)
 {
-	assert(s != NULL);
 	return s->id;
 }
 
@@ -432,6 +197,7 @@ adjust_streambuf (struct mjv_source *s)
 enum mjv_source_status
 mjv_source_capture (struct mjv_source *s)
 {
+	int fd;
 	int available;
 	fd_set fdset;
 	struct timespec timeout;
@@ -447,11 +213,14 @@ mjv_source_capture (struct mjv_source *s)
 		state_image_by_content_length,
 		state_image_by_eof_search
 	};
-
+	if ((fd = mjv_config_source_get_fd(s->config)) < 0) {
+		log_error("Invalid file descriptor\n");
+		return MJV_SOURCE_READ_ERROR;
+	}
 	for (;;)
 	{
 		FD_ZERO(&fdset);
-		FD_SET(s->fd, &fdset);
+		FD_SET(fd, &fdset);
 		timeout.tv_sec = 10;
 		timeout.tv_nsec = 0;
 
@@ -460,7 +229,7 @@ mjv_source_capture (struct mjv_source *s)
 
 		// pselect() is a pthread cancellation point. When this thread
 		// receives a cancellation request, it will be inside here.
-		available = pselect(s->fd + 1, &fdset, NULL, NULL, &timeout, NULL);
+		available = pselect(fd + 1, &fdset, NULL, NULL, &timeout, NULL);
 
 		// Make this thread uncancelable; once processing IO,
 		// it should be allowed to finish its job.
@@ -479,7 +248,7 @@ mjv_source_capture (struct mjv_source *s)
 			log_error("%s\n", strerror(errno));
 			return MJV_SOURCE_READ_ERROR;
 		}
-		s->nread = read(s->fd, s->head, BUF_SIZE - (s->head - s->buf));
+		s->nread = read(fd, s->head, BUF_SIZE - (s->head - s->buf));
 		if (s->nread < 0) {
 			log_error("%s\n", strerror(errno));
 			return MJV_SOURCE_READ_ERROR;
@@ -749,7 +518,7 @@ state_image_by_content_length (struct mjv_source *s)
 {
 #define BYTES_LEFT_IN_BUF (s->head - s->cur - 1)
 #define BYTES_FOUND  (s->cur + 1 - s->anchor)
-#define BYTES_NEEDED (ptrdiff_t)(s->content_length - BYTES_FOUND)
+#define BYTES_NEEDED (intptr_t)(s->content_length - BYTES_FOUND)
 
 	// If we have a content-length > 0, then trust it; read out
 	// exactly that many bytes before finding the boundary again.
@@ -876,7 +645,7 @@ interpret_content_type (struct mjv_source *s, char *line, unsigned int line_len)
 
 #define SIZE_LEFT	(unsigned int)(last + 1 - cur)
 #define SKIP_SPACES	while (*cur == ' ') { if (cur++ == last) return CORRUPT_HEADER; }
-#define STRING_MATCH(x)	(SIZE_LEFT >= (ptrdiff_t)STR_LEN(x) && strncmp(cur, x, STR_LEN(x)) == 0)
+#define STRING_MATCH(x)	(SIZE_LEFT >= (intptr_t)STR_LEN(x) && strncmp(cur, x, STR_LEN(x)) == 0)
 
 	SKIP_SPACES;
 

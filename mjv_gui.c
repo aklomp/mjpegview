@@ -3,6 +3,7 @@
 #include <gtk/gtk.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 
+#include "mjv_log.h"
 #include "mjv_frame.h"
 #include "mjv_source.h"
 #include "mjv_thread.h"
@@ -44,7 +45,7 @@ mjv_gui_main (int argc, char **argv, GList *sources_list)
 		struct mjv_thread *thread = mjv_thread_create(source);
 
 		if (thread == NULL) {
-			g_printerr("Error: could not create thread for source %s\n", mjv_source_get_name(source)) ;
+			log_error("Error: could not create thread for source %s\n", mjv_source_get_name(source));
 			continue;
 		}
 		thread_list = g_list_append(thread_list, thread);
@@ -69,7 +70,7 @@ mjv_gui_main (int argc, char **argv, GList *sources_list)
 	// Run camera threads:
 	for (link = g_list_first(thread_list); link; link = g_list_next(link)) {
 		if (mjv_thread_run(MJV_THREAD(link)) == 0) {
-			g_printerr("Could not create thread\n");
+			log_error("Could not create thread\n");
 		}
 	}
 	// Enter main loop:

@@ -9,10 +9,14 @@ GLIB_LDFLAGS = `pkg-config --libs glib-2.0`
 
 PROG = mjpegview
 
+# These object files do not depend on GLib or GTK+-2:
+OBJS = \
+  mjv_frame.o \
+  mjv_log.o
+
 # These object files depend only on GLib:
 OBJS_GLIB = \
   mjv_config.o \
-  mjv_frame.o \
   mjv_framebuf.o \
   mjv_main.o \
   mjv_source.o

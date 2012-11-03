@@ -17,6 +17,7 @@
 #include <assert.h>
 #include <pthread.h>
 
+#include "mjv_log.h"
 #include "mjv_config.h"
 #include "mjv_frame.h"
 #include "mjv_framebuf.h"
@@ -39,8 +40,8 @@
 
 // Debug print functions:
 #if 0
-  #define Debug(x...)	g_printerr(x)
-  #define DebugEntry()	g_printerr("Entering %s\n", __func__)
+  #define Debug(x...)	log_debug(x)
+  #define DebugEntry()	log_debug("Entering %s\n", __func__)
 #else
   #define Debug(x...)	((void)(0))
   #define DebugEntry()	((void)(0))
@@ -194,7 +195,7 @@ mjv_source_open_file (struct mjv_source *s)
 	s->delay_usec = mjv_config_source_get_usec(s->config);
 
 	if ((s->fd = open(file, O_RDONLY)) < 0) {
-		g_printerr("%s: %s\n", g_strerror(errno), file);
+		log_error("%s: %s\n", strerror(errno), file);
 		return false;
 	}
 	return true;
@@ -233,13 +234,13 @@ mjv_source_open_network (struct mjv_source *s)
 	// Second argument of getaddrinfo() is the port number,
 	// as a string; so snprintf() it:
 	if (port > 65535) {
-		g_printerr("Implausible port\n");
+		log_error("Implausible port\n");
 		goto err;
 	}
 	g_snprintf(port_string, sizeof(port_string), "%u", port);
 
 	if (getaddrinfo(host, port_string, &hints, &result) != 0) {
-		g_printerr("%s\n", g_strerror(errno));
+		log_error("%s\n", strerror(errno));
 		goto err;
 	}
 	// Loop over all results, try them until we find
@@ -258,17 +259,17 @@ mjv_source_open_network (struct mjv_source *s)
 
 	// Quit if none of the results worked:
 	if (rp == NULL) {
-		Debug("Could not connect\n");
+		log_debug("Could not connect\n");
 		goto err;
 	}
 	Debug("Connected\n");
 
 	// Write the HTTP request:
 	if (!write_http_request(fd, path, user, pass)) {
-		Debug("Could not write HTTP request\n");
+		log_debug("Could not write HTTP request\n");
 		goto err;
 	}
-	Debug("Wrote http request\n");
+	log_debug("Wrote http request\n");
 
 	// The response is handled by the stream decoder. We're done:
 	s->fd = fd;
@@ -319,11 +320,11 @@ mjv_source_create (struct mjv_config_source *config)
 	}
 	ret = g_snprintf(s->name, 15, "Camera %u", s->id);
 	if (ret < 0) {
-		g_printerr("Could not g_snprintf() the default camera name\n");
+		log_error("Could not g_snprintf() the default camera name\n");
 		goto err;
 	}
 	if (ret >= 15) {
-		g_printerr("Not enough space to g_snprintf() the default camera name\n");
+		log_error("Not enough space to g_snprintf() the default camera name\n");
 		goto err;
 	}
 	return s;
@@ -344,7 +345,7 @@ mjv_source_destroy (struct mjv_source *s)
 		Debug("%s\n", g_strerror(errno));
 	}
 	if (s->name != NULL) {
-		g_printf("Destroying source %s\n", s->name);
+		log_info("Destroying source %s\n", s->name);
 		free(s->name);
 	}
 	free(s->boundary);
@@ -475,29 +476,29 @@ mjv_source_capture (struct mjv_source *s)
 
 		if (available == 0) {
 			// timeout reached
-			g_printf("Timeout reached. Giving up.\n");
+			log_info("Timeout reached. Giving up.\n");
 			return MJV_SOURCE_TIMEOUT;
 		}
 		if (available < 0) {
 			if (errno == EINTR) {
 				continue;
 			}
-			g_printerr("%s\n", g_strerror(errno));
+			log_error("%s\n", strerror(errno));
 			return MJV_SOURCE_READ_ERROR;
 		}
 		s->nread = read(s->fd, s->head, BUF_SIZE - (s->head - s->buf));
 		if (s->nread < 0) {
-			g_printerr("%s\n", g_strerror(errno));
+			log_error("%s\n", strerror(errno));
 			return MJV_SOURCE_READ_ERROR;
 		}
 		else if (s->nread == 0) {
-			g_printf("End of file\n");
+			log_info("End of file\n");
 			return MJV_SOURCE_PREMATURE_EOF;
 		}
 		// buflast is always ONE PAST the real last char:
 		s->head += s->nread;
 
-		Debug("Read %u bytes\n", s->nread);
+		log_debug("Read %u bytes\n", s->nread);
 
 		// Dispatcher; while successful, keep jumping from state to state:
 next_state: 	switch (state_jump_table[s->state](s))
@@ -510,11 +511,11 @@ next_state: 	switch (state_jump_table[s->state](s))
 				continue;
 
 			case READ_ERROR:
-				g_printerr("READ_ERROR\n");
+				log_error("READ_ERROR\n");
 				return MJV_SOURCE_READ_ERROR;
 
 			case CORRUPT_HEADER:
-				g_printerr("Corrupt header\n");
+				log_error("Corrupt header\n");
 				return MJV_SOURCE_CORRUPT_HEADER;
 		}
 	}
@@ -537,13 +538,13 @@ state_http_banner (struct mjv_source *s)
 	// We expect the very first thing in the response to be the HTTP signature:
 	if (line_len < STR_LEN(http_signature)
 	 || strncmp(line, "HTTP/1.", STR_LEN(http_signature)) != 0) {
-		Debug("Corrupt HTTP signature\n");
+		log_error("Corrupt HTTP signature\n");
 		return CORRUPT_HEADER;
 	}
 	// HTML version, accept 1.0 and 1.1:
 	if (line_len < 8
 	 || (line[7] != '0' && line[7] != '1')) {
-		Debug("Corrupt HTTP signature\n");
+		log_error("Corrupt HTTP signature\n");
 		return CORRUPT_HEADER;
 	}
 	// Status code:
@@ -552,7 +553,7 @@ state_http_banner (struct mjv_source *s)
 	 || !is_numeric(line[9])
 	 || !is_numeric(line[10])
 	 || !is_numeric(line[11])) {
-		Debug("Corrupt HTTP status code\n");
+		log_error("Corrupt HTTP status code\n");
 		return CORRUPT_HEADER;
 	}
 	// HTML response code in bytes 9..11:
@@ -560,7 +561,7 @@ state_http_banner (struct mjv_source *s)
 
 	if (s->response_code != 200) {
 		// TODO: something better than this:
-		Debug("Response code is not 200 but %u\n", s->response_code);
+		log_error("Response code is not 200 but %u\n", s->response_code);
 		return READ_ERROR;
 	}
 	s->state = STATE_HTTP_HEADER;
@@ -585,7 +586,7 @@ state_http_header (struct mjv_source *s)
 			// TODO: implement start-of-image/end-of-image search instead
 			// as a last-ditch method
 			if (s->boundary == NULL) {
-				Debug("Could not find boundary\n");
+				log_error("Could not find boundary\n");
 				return CORRUPT_HEADER;
 			}
 			s->state = STATE_FIND_BOUNDARY;
@@ -734,8 +735,8 @@ state_find_image (struct mjv_source *s)
 			// Check that the whole of the image can fit in the buffer.
 			// FIXME: do something nicer:
 			if (s->content_length > BUF_SIZE) {
-				g_printerr("Content length larger than read buffer; frame won't fit\n");
-				g_printerr("Skipping frame, sorry.\n");
+				log_error("Content length larger than read buffer; frame won't fit\n");
+				log_error("Skipping frame, sorry.\n");
 				s->state = STATE_FIND_BOUNDARY;
 			}
 			break;
@@ -930,7 +931,7 @@ interpret_content_type (struct mjv_source *s, char *line, unsigned int line_len)
 				s->boundary_len = end - cur + 1;
 				if ((s->boundary = malloc(s->boundary_len + 1)) == NULL) {
 					// TODO: better handling
-					g_printerr("malloc()");
+					log_error("malloc()");
 					return READ_ERROR;
 				}
 				memcpy(s->boundary, cur, s->boundary_len);
@@ -956,14 +957,14 @@ got_new_frame (struct mjv_source *s, char *start, unsigned int len)
 	// Quick validity check on the frame;
 	// must start with 0xffd8 and end with 0xffd9:
 	if (!VALUE_AT(start, 0xffd8)) {
-		g_printerr("Invalid start marker!\n");
+		log_error("Invalid start marker!\n");
 	}
 	if (!VALUE_AT(start + len - 2, 0xffd9)) {
-		g_printerr("%s: invalid JPEG EOF signature\n", s->name);
+		log_error("%s: invalid JPEG EOF signature\n", s->name);
 		{
 			char *c;
 			for (c = start + len - 20; c < start + len + 20; c++) {
-				if (VALUE_AT(c, 0xffd9)) g_printerr("Off by %i??\n", c - (start + len - 2));
+				if (VALUE_AT(c, 0xffd9)) log_error("Off by %i??\n", c - (start + len - 2));
 			}
 		}
 	}
@@ -972,11 +973,11 @@ got_new_frame (struct mjv_source *s, char *start, unsigned int len)
 		artificial_delay(s->delay_usec, &s->last_emitted);
 	}
 	if (s->callback == NULL) {
-		Debug("No callback defined for frame\n");
+		log_error("No callback defined for frame\n");
 		return false;
 	}
 	if ((frame = mjv_frame_create(start, len)) == NULL) {
-		Debug("Could not create frame\n");
+		log_error("Could not create frame\n");
 		return false;
 	}
 	s->callback(frame, s->user_pointer);

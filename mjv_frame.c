@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <string.h>	// memcpy()
 #include <jpeglib.h>
-#include <glib.h>
 #include <assert.h>
 #include <jerror.h>
 #include <setjmp.h>

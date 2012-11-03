@@ -4,6 +4,7 @@
 #include <glib.h>
 #include <libconfig.h>
 
+#include "mjv_log.h"
 #include "mjv_config.h"
 
 #define malloc_fail(s)   ((s = malloc(sizeof(*(s)))) == NULL)
@@ -147,7 +148,7 @@ mjv_config_read_file (struct mjv_config *const c, const char *const filename)
 	if (config_read_file(c->config, filename) != CONFIG_FALSE) {
 		return true;
 	}
-	g_printerr("%s: %d: %s\n",
+	log_error("%s: %d: %s\n",
 		config_error_file(c->config),
 		config_error_line(c->config),
 		config_error_text(c->config)

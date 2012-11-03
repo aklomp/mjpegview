@@ -1,8 +1,8 @@
 #include <stdbool.h>
 #include <glib.h>
 #include <glib/gprintf.h>
-#include <assert.h>
 
+#include "mjv_log.h"
 #include "mjv_frame.h"
 
 struct mjv_framebuf {
@@ -35,6 +35,8 @@ mjv_framebuf_destroy (struct mjv_framebuf *framebuf)
 	GList *link;
 
 	g_assert(framebuf != NULL);
+
+	log_debug("Destroying framebuf with %u members (capacity %u)\n", g_list_length(framebuf->frames), framebuf->capacity);
 
 	// Loop over the list, destroy all frames:
 	for (link = g_list_first(framebuf->frames); link; link = g_list_next(link)) {

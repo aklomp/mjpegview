@@ -10,6 +10,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 
+#include "mjv_log.h"
 #include "mjv_config_source.h"
 
 struct mjv_config_source {
@@ -48,7 +49,7 @@ static char err_malloc_failed[] = "malloc() failed\n";
 	else { \
 		size_t len = strlen(x) + 1; \
 		if ((s->x = malloc(len)) == NULL) { \
-			write(2, err_malloc_failed, STR_LEN(err_malloc_failed)); \
+			log_error(err_malloc_failed); \
 			goto err_##y; \
 		} \
 		memcpy(s->x, x, len); \
@@ -62,7 +63,7 @@ static char err_malloc_failed[] = "malloc() failed\n";
 	{ \
 		int write_size = y; \
 		if (write(s->fd, x, write_size) != write_size) { \
-			write(2, err_write_failed, STR_LEN(err_write_failed)); \
+			log_error(err_write_failed); \
 			ret = 0; \
 			goto err; \
 		} \
@@ -174,7 +175,7 @@ set_default_name (struct mjv_config_source *s)
 {
 	char name[] = "(unnamed)";
 	if ((s->name = malloc(sizeof(name))) == NULL) {
-		write(2, err_malloc_failed, STR_LEN(err_malloc_failed));
+		log_error(err_malloc_failed);
 		return false;
 	}
 	memcpy(s->name, name, sizeof(name));
@@ -185,8 +186,7 @@ static bool
 open_file (struct mjv_config_source *s)
 {
 	if (s->file == NULL) {
-		char errstr[] = "No filename given\n";
-		write(2, errstr, STR_LEN(errstr));
+		log_error("No filename given\n");
 		return false;
 	}
 	if ((s->fd = open(s->file, O_RDONLY)) < 0) {
@@ -206,14 +206,12 @@ open_network (struct mjv_config_source *s)
 
 	// Validate port:
 	if (s->port < 0 || s->port > 65535) {
-		char errstr[] = "Invalid port\n";
-		write(2, errstr, STR_LEN(errstr));
+		log_error("Invalid port\n");
 		return false;
 	}
 	// Validate host:
 	if (s->host == NULL) {
-		char errstr[] = "No host given\n";
-		write(2, errstr, STR_LEN(errstr));
+		log_error("No host given\n");
 		return false;
 	}
 	memset(&hints, 0, sizeof(struct addrinfo));
@@ -243,8 +241,7 @@ open_network (struct mjv_config_source *s)
 	freeaddrinfo(result);
 	if (rp == NULL) {
 		s->fd = -1;
-		char errstr[] = "Could not connect\n";
-		write(2, errstr, STR_LEN(errstr));
+		log_error("Could not connect\n");
 		return false;
 	}
 	return write_http_request(s);
@@ -260,13 +257,12 @@ write_http_request (struct mjv_config_source *s)
 	char keep_alive[] = "Connection: Keep-Alive\r\n";
 
 	if ((buffer = malloc(100)) == NULL) {
-		write(2, err_malloc_failed, STR_LEN(err_malloc_failed));
+		log_error(err_malloc_failed);
 		ret = false;
 		goto err;
 	}
 	if ((buffer_len = snprintf(buffer, 100, "GET %s HTTP/1.0\r\n", s->path)) >= 100) {
-		char errstr[] = "snprintf() buffer too short\n";
-		write(2, errstr, STR_LEN(errstr));
+		log_error("snprintf() buffer too short\n");
 		ret = false;
 		goto err;
 	}
@@ -301,7 +297,7 @@ write_auth_string (struct mjv_config_source *s)
 	// Caller ensures s->user and s->pass are non-NULL
 	// The auth string has the form 'username:password':
 	if ((auth_string = malloc(user_len + pass_len + 1)) == NULL) {
-		write(2, err_malloc_failed, STR_LEN(err_malloc_failed));
+		log_error(err_malloc_failed);
 		ret = false;
 		goto err;
 	}
@@ -311,7 +307,7 @@ write_auth_string (struct mjv_config_source *s)
 
 	// Encode this auth string into base64:
 	if ((base64_auth_string = malloc(((user_len + pass_len + 1) * 4) / 3 + 3)) == NULL) {
-		write(2, err_malloc_failed, STR_LEN(err_malloc_failed));
+		log_error(err_malloc_failed);
 		ret = false;
 		goto err;
 	}
@@ -322,7 +318,7 @@ write_auth_string (struct mjv_config_source *s)
 	size_t header_len = STR_LEN(header_fmt) - 2 + strlen(base64_auth_string);
 
 	if ((header = malloc(header_len + 1)) == NULL) {
-		write(2, err_malloc_failed, STR_LEN(err_malloc_failed));
+		log_error(err_malloc_failed);
 		ret = false;
 		goto err;
 	}
@@ -357,7 +353,7 @@ base64_encode (char *const src, size_t srclen, char *const dst)
 		// in[2] = 00222233
 		// in[3] = 00333333
 
-		in[0] = (*c >> 2) & 0x3F;
+		in[0] = *c >> 2;
 		in[1] = (*c & 0x03) << 4;
 		if ((size_t)(++c - src) >= srclen) goto out;
 		valid++;
@@ -366,7 +362,7 @@ base64_encode (char *const src, size_t srclen, char *const dst)
 		if ((size_t)(++c - src) >= srclen) goto out;
 		valid++;
 		in[2] |= ((*c >> 6) & 0x03);
-		in[3] = *c & 0x3F;
+		in[3] = *c;
 		c++;
 
 out:		for (int i = 0; i < 4; i++) {

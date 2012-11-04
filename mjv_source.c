@@ -1,7 +1,6 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
 #include <stdint.h>
 #include <errno.h>
 #include <time.h>
@@ -344,8 +343,6 @@ state_http_header (struct mjv_source *s)
 			s->state = STATE_FIND_BOUNDARY;
 			break;
 		}
-//		write(1, line, line_len);
-//		write(1, "<\n", 2);
 #define STRING_MATCH(x)	(line_len >= STR_LEN(x) && strncmp(line, x, STR_LEN(x)) == 0)
 		if (STRING_MATCH(header_content_type_one)
 		 || STRING_MATCH(header_content_type_two)) {
@@ -427,15 +424,9 @@ state_http_subheader (struct mjv_source *s)
 		if (line_len == 0) {
 			break;
 		}
-//		// Print the header:
-//		write(2, line, line_len);
-//		write(2, "\n", 1);
 
 #define STRING_MATCH(x)	(line_len >= STR_LEN(x) && strncmp(line, x, STR_LEN(x)) == 0)
 
-	//	if (STRING_MATCH(header_content_type_one)
-	//	 || STRING_MATCH(header_content_type_two)) {
-	//	}
 		if (STRING_MATCH(header_content_length_one)
 		 || STRING_MATCH(header_content_length_two)) {
 			char *cur = line + STR_LEN(header_content_length_one);

@@ -14,8 +14,6 @@ struct mjv_source *mjv_source_create (struct mjv_config_source *);
 void mjv_source_destroy (struct mjv_source *);
 
 // The main function. This grabs frames from the source and relays them
-// to a callback function.
+// to a callback function:
 enum mjv_source_status mjv_source_capture (struct mjv_source *);
-
-// setters
 void mjv_source_set_callback (struct mjv_source *s, void (*got_frame_callback)(struct mjv_frame *, void *), void *);

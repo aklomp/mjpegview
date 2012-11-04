@@ -31,6 +31,7 @@ struct mjv_config_source {
 	};
 };
 
+static bool set_default_name (struct mjv_config_source *s);
 static bool open_file (struct mjv_config_source *s);
 static bool open_network (struct mjv_config_source *s);
 static bool write_http_request (struct mjv_config_source *s);
@@ -83,8 +84,12 @@ mjv_config_source_create_from_file (const char *const name, const char *const fi
 	s->fd = -1;
 	ADD_STRING(name, 1);
 	ADD_STRING(file, 2);
+	if (s->name == NULL && set_default_name(s) == 0) {
+		goto err_3;
+	}
 	return s;
 
+err_3:	free(s->file);
 err_2:	free(s->name);
 err_1:	free(s);
 err_0:	return NULL;
@@ -106,8 +111,12 @@ mjv_config_source_create_from_network (const char *const name, const char *const
 	ADD_STRING(path, 3);
 	ADD_STRING(user, 4);
 	ADD_STRING(pass, 5);
+	if (s->name == NULL && set_default_name(s) == 0) {
+		goto err_6;
+	}
 	return s;
 
+err_6:	free(s->pass);
 err_5:	free(s->user);
 err_4:	free(s->path);
 err_3:	free(s->host);
@@ -158,6 +167,18 @@ mjv_config_source_open (struct mjv_config_source *cs)
 		case TYPE_NETWORK: return open_network(cs);
 	}
 	return 0;
+}
+
+static bool
+set_default_name (struct mjv_config_source *s)
+{
+	char name[] = "(unnamed)";
+	if ((s->name = malloc(sizeof(name))) == NULL) {
+		write(2, err_malloc_failed, STR_LEN(err_malloc_failed));
+		return false;
+	}
+	memcpy(s->name, name, sizeof(name));
+	return true;
 }
 
 static bool

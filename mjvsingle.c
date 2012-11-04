@@ -64,10 +64,6 @@ process_cmdline (int argc, char **argv, char **name, char **filename, int *usec,
 			case 'P': if (copy_string(optarg, path)) break; return false;
 		}
 	}
-	// If no camera name given, set a default:
-	if (*name == NULL && !copy_string("Camera", name)) {
-		return false;
-	}
 	return true;
 }
 

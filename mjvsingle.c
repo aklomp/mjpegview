@@ -36,6 +36,7 @@ process_cmdline (int argc, char **argv, char **name, char **filename, int *usec,
 	int c;
 	int option_index = 0;
 	static struct option long_options[] = {
+		{ "debug", 0, 0, 'd' },
 		{ "filename", 1, 0, 'f' },
 		{ "help", 0, 0, 'h' },
 		{ "host", 1, 0, 'H' },
@@ -48,11 +49,12 @@ process_cmdline (int argc, char **argv, char **name, char **filename, int *usec,
 		{ 0, 0, 0, 0 }
 	};
 	for (;;) {
-		if ((c = getopt_long(argc, argv, "f:hH:n:m:u:p:P:q:", long_options, &option_index)) == -1) {
+		if ((c = getopt_long(argc, argv, "df:hH:n:m:u:p:P:q:", long_options, &option_index)) == -1) {
 			break;
 		}
 		switch (c)
 		{
+			case 'd': log_debug_on(); break;
 			case 'h': break;
 			case 'm': *usec = atoi(optarg); break;
 			case 'q': *port = atoi(optarg); break;

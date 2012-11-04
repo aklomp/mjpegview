@@ -179,3 +179,15 @@ mjv_frame_get_timestamp (const struct mjv_frame *const frame)
 {
 	return frame->timestamp;
 }
+
+unsigned char *
+mjv_frame_get_rawbits (const struct mjv_frame *const frame)
+{
+	return frame->rawbits;
+}
+
+unsigned int
+mjv_frame_get_num_rawbits (const struct mjv_frame *const frame)
+{
+	return frame->num_rawbits;
+}

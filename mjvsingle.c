@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <getopt.h>
+#include <errno.h>
 
 #include "mjv_log.c"
 #include "mjv_frame.h"
@@ -71,12 +72,56 @@ process_cmdline (int argc, char **argv, char **name, char **filename, int *usec,
 }
 
 static void
+write_image_file (char *data, size_t nbytes, unsigned int framenum)
+{
+	FILE *fp;
+	char filename_pat[] = "%0_d.jpg";
+	size_t filename_len;
+	char patsize;
+
+	if (data == NULL || nbytes == 0) {
+		log_error("Error: frame contains no data\n");
+		return;
+	}
+	if (framenum >= 1000000000) {
+		log_error("Error: framenum too large (over 9 digits)\n");
+		return;
+	}
+	patsize = (framenum >= 100000000) ? 9
+		: (framenum >= 10000000) ? 8
+		: (framenum >= 1000000) ? 7
+		: (framenum >= 100000) ? 6
+		: (framenum >= 10000) ? 5
+		: (framenum >= 1000) ? 4
+		: 3;
+
+	filename_pat[2] = '0' + patsize;
+	filename_len = sizeof(filename_pat) + patsize - 4;
+	{
+		char filename[filename_len];
+
+		snprintf(filename, filename_len, filename_pat, framenum);
+		if ((fp = fopen(filename, "w")) == NULL) {
+			perror("fopen()");
+		}
+		else {
+			log_debug("writing %s\n", filename);
+			fwrite(data, nbytes, 1, fp);
+			fclose(fp);
+		}
+	}
+}
+
+static void
 got_frame_callback (struct mjv_frame *f, void *data)
 {
 	(void)data;
 
 	n_frames++;
 	log_debug("got frame %d\n", n_frames);
+
+	// Write to file:
+	write_image_file((char *)mjv_frame_get_rawbits(f), mjv_frame_get_num_rawbits(f), n_frames);
 
 	// We are responsible for freeing the mjv_frame when we're done with it:
 	mjv_frame_destroy(f);

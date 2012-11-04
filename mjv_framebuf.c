@@ -42,7 +42,6 @@ mjv_framebuf_destroy (struct mjv_framebuf *framebuf)
 	for (link = g_list_first(framebuf->frames); link; link = g_list_next(link)) {
 		mjv_frame_destroy(MJV_FRAME(link));
 	}
-
 	// Destroy list itself:
 	g_list_free(framebuf->frames);
 	g_free(framebuf);

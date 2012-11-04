@@ -56,8 +56,6 @@ char header_content_type_two[] = "Content-type:";
 char header_content_length_one[] = "Content-Length:";
 char header_content_length_two[] = "Content-length:";
 
-static unsigned int last_id = 0;
-
 struct mjv_source
 {
 	int nread;		// return value of read();
@@ -65,7 +63,6 @@ struct mjv_source
 	int state;		// state machine state
 	char *boundary;
 	int delay_usec;
-	unsigned int id;
 	unsigned int boundary_len;
 	unsigned int response_code;
 	unsigned int content_length;
@@ -113,7 +110,6 @@ mjv_source_create (struct mjv_config_source *config)
 		goto err;
 	}
 	// Set default values:
-	s->id = ++last_id;	// First created camera has id #1
 	s->boundary = NULL;
 	s->mimetype = -1;
 	s->content_length = 0;
@@ -155,12 +151,6 @@ mjv_source_set_callback (struct mjv_source *s, void (*got_frame_callback)(struct
 {
 	s->callback = got_frame_callback;
 	s->user_pointer = user_pointer;
-}
-
-unsigned int
-mjv_source_get_id (const struct mjv_source *const s)
-{
-	return s->id;
 }
 
 static void

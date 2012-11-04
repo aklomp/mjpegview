@@ -17,8 +17,5 @@ void mjv_source_destroy (struct mjv_source *);
 // to a callback function.
 enum mjv_source_status mjv_source_capture (struct mjv_source *);
 
-// getters
-unsigned int mjv_source_get_id (const struct mjv_source const *);
-
 // setters
 void mjv_source_set_callback (struct mjv_source *s, void (*got_frame_callback)(struct mjv_frame *, void *), void *);

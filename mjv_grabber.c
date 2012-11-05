@@ -27,15 +27,6 @@
 #define U16_BYTESWAP(y)	(((((uint16_t)y) >> 8) & 0xFF) | ((((uint16_t)y) & 0xFF) << 8))
 #define VALUE_AT(x,y)	(*((uint16_t *)(x)) == U16_BYTESWAP(y))
 
-// Debug print functions:
-#if 0
-  #define Debug(x...)	log_debug(x)
-  #define DebugEntry()	log_debug("Entering %s\n", __func__)
-#else
-  #define Debug(x...)	((void)(0))
-  #define DebugEntry()	((void)(0))
-#endif
-
 // States in our state machine:
 enum {
 	STATE_HTTP_BANNER,
@@ -363,7 +354,6 @@ state_find_boundary (struct mjv_grabber *s)
 {
 	// Loop over the input till we find a \r\n or an \n followed by
 	// our boundary marker, and another \r\n or \n:
-	DebugEntry();
 	for (;;)
 	{
 		// If this character matches the first character of the boundary,
@@ -415,7 +405,6 @@ state_http_subheader (struct mjv_grabber *s)
 	char *line;
 	unsigned int line_len;
 
-	DebugEntry();
 	for (;;)
 	{
 		if ((ret = fetch_header_line(s, &line, &line_len)) != READ_SUCCESS) {
@@ -462,7 +451,6 @@ state_find_image (struct mjv_grabber *s)
 {
 	// Consume bytes from the buffer till we find the
 	// JPEG signature, which is 0xffd8:
-	DebugEntry();
 	for (;;)
 	{
 		if (*s->cur == (char)0xff) {
@@ -503,7 +491,6 @@ state_image_by_content_length (struct mjv_grabber *s)
 
 	// If we have a content-length > 0, then trust it; read out
 	// exactly that many bytes before finding the boundary again.
-	DebugEntry();
 	for (;;)
 	{
 		// If more than enough bytes left at end of buffer,
@@ -540,7 +527,6 @@ state_image_by_eof_search (struct mjv_grabber *s)
 {
 	// If no content-length known, then there's nothing we can
 	// do but seek the EOF marker, 0xffd9, one byte at a time:
-	DebugEntry();
 	for (;;)
 	{
 		// If we found the EOF marker, export the frame and be done:
@@ -694,8 +680,6 @@ got_new_frame (struct mjv_grabber *s, char *start, unsigned int len)
 {
 	struct mjv_frame *frame;
 
-	DebugEntry();
-
 #if 0
 	// Quick validity check on the frame;
 	// must start with 0xffd8 and end with 0xffd9:
@@ -734,8 +718,6 @@ artificial_delay (unsigned int delay_usec, struct timespec *last)
 	struct timespec now;
 	unsigned long delay_sec;
 	unsigned long delay_nsec;
-
-	DebugEntry();
 
 	if (delay_usec < 1000000) {
 		delay_sec = 0;

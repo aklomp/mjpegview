@@ -8,7 +8,7 @@
 
 #include "mjv_frame.h"
 #include "mjv_framebuf.h"
-#include "mjv_config_source.h"
+#include "mjv_source.h"
 #include "mjv_grabber.h"
 #include "mjv_thread.h"
 
@@ -63,7 +63,7 @@ struct mjv_thread {
 	unsigned int height;
 	unsigned int blinker;
 	struct spinner spinner;
-	struct mjv_config_source *cs;
+	struct mjv_source *source;
 	struct mjv_grabber *grabber;
 	struct mjv_framebuf *framebuf;
 	struct framerate framerate;
@@ -153,7 +153,7 @@ canvas_repaint (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 	}
 	cairo_paint(t->cairo);
 
-	if ((source_name = mjv_config_source_get_name(t->cs)) != NULL) {
+	if ((source_name = mjv_source_get_name(t->source)) != NULL) {
 		print_source_name(t->cairo, source_name);
 	}
 	if (t->state == STATE_CONNECTING) {
@@ -168,7 +168,7 @@ canvas_repaint (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 }
 
 struct mjv_thread *
-mjv_thread_create (struct mjv_config_source *cs)
+mjv_thread_create (struct mjv_source *source)
 {
 	// This function creates a thread object, but does not run it.
 	// To run, call mjv_thread_run on the thread object.
@@ -182,7 +182,7 @@ mjv_thread_create (struct mjv_config_source *cs)
 
 	t->width   = 640;
 	t->height  = 480;
-	t->cs      = cs;
+	t->source  = source;
 	t->grabber = NULL;
 	t->mutex   = g_mutex_new();
 	t->canvas  = gtk_drawing_area_new();
@@ -318,12 +318,12 @@ thread_main (void *user_data)
 	mjv_thread_show_spinner(t);
 
 	// Open source file descriptor:
-	if (mjv_config_source_open(t->cs) == 0) {
+	if (mjv_source_open(t->source) == 0) {
 		mjv_thread_hide_spinner(t);
 		update_state(t, STATE_DISCONNECTED);
 		return NULL;
 	}
-	if ((t->grabber = mjv_grabber_create(t->cs)) == NULL) {
+	if ((t->grabber = mjv_grabber_create(t->source)) == NULL) {
 		mjv_thread_hide_spinner(t);
 		update_state(t, STATE_DISCONNECTED);
 		return NULL;

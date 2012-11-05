@@ -10,7 +10,7 @@
 
 #include "mjv_log.c"
 #include "mjv_frame.h"
-#include "mjv_config_source.h"
+#include "mjv_source.h"
 #include "mjv_grabber.h"
 
 // This is a really simple framegrabber for mjpeg streams. It is intended to
@@ -154,7 +154,7 @@ main (int argc, char **argv)
 	char *pass = NULL;
 	int port = 0;
 	int usec = 100;
-	struct mjv_config_source *cs = NULL;
+	struct mjv_source *s = NULL;
 	struct mjv_grabber *g = NULL;
 
 	if (!process_cmdline(argc, argv, &name, &filename, &usec, &host, &path, &user, &pass, &port)) {
@@ -162,14 +162,14 @@ main (int argc, char **argv)
 		goto exit;
 	}
 	if (filename != NULL) {
-		if ((cs = mjv_config_source_create_from_file (name, filename, usec)) == NULL) {
+		if ((s = mjv_source_create_from_file(name, filename, usec)) == NULL) {
 			log_error("Error: could not create source from file\n");
 			ret = 1;
 			goto exit;
 		}
 	}
 	else if (host != NULL) {
-		if ((cs = mjv_config_source_create_from_network (name, host, path, user, pass, port)) == NULL) {
+		if ((s = mjv_source_create_from_network(name, host, path, user, pass, port)) == NULL) {
 			log_error("Error: could not create source from network\n");
 			ret = 1;
 			goto exit;
@@ -180,12 +180,12 @@ main (int argc, char **argv)
 		ret = 1;
 		goto exit;
 	}
-	if ((g = mjv_grabber_create(cs)) == NULL) {
+	if ((g = mjv_grabber_create(s)) == NULL) {
 		log_error("Error: could not create grabber\n");	// TODO: non-descriptive error messages...
 		ret = 1;
 		goto exit;
 	}
-	if (mjv_config_source_open(cs) == 0) {
+	if (mjv_source_open(s) == 0) {
 		log_error("Error: could not open config source\n");
 		ret = 1;
 		goto exit;
@@ -199,7 +199,7 @@ main (int argc, char **argv)
 	log_info("Frames processed: %d\n", n_frames);
 
 exit:	mjv_grabber_destroy(g);
-	mjv_config_source_destroy(cs);
+	mjv_source_destroy(s);
 	free(pass);
 	free(user);
 	free(path);

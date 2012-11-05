@@ -1,19 +1,20 @@
 struct mjv_source;
 struct mjv_config_source;
 
-// Return codes for mjv_source_capture:
-enum mjv_source_status
-{ MJV_SOURCE_SUCCESS
-, MJV_SOURCE_TIMEOUT
-, MJV_SOURCE_READ_ERROR
-, MJV_SOURCE_PREMATURE_EOF
-, MJV_SOURCE_CORRUPT_HEADER
-};
+enum { TYPE_NETWORK, TYPE_FILE };
 
-struct mjv_source *mjv_source_create (struct mjv_config_source *);
+struct mjv_source *mjv_source_create_from_file (const char *const, const char *const, const int);
+struct mjv_source *mjv_source_create_from_network (const char *const, const char *const, const char *const, const char *const, const char *const, const int);
 void mjv_source_destroy (struct mjv_source *);
+int mjv_source_open (struct mjv_source *cs);
 
-// The main function. This grabs frames from the source and relays them
-// to a callback function:
-enum mjv_source_status mjv_source_capture (struct mjv_source *);
-void mjv_source_set_callback (struct mjv_source *s, void (*got_frame_callback)(struct mjv_frame *, void *), void *);
+int         mjv_source_get_fd   (const struct mjv_source *const);
+int         mjv_source_get_port (const struct mjv_source *const);
+int         mjv_source_get_usec (const struct mjv_source *const);
+int         mjv_source_get_type (const struct mjv_source *const);
+const char *mjv_source_get_file (const struct mjv_source *const);
+const char *mjv_source_get_name (const struct mjv_source *const);
+const char *mjv_source_get_host (const struct mjv_source *const);
+const char *mjv_source_get_path (const struct mjv_source *const);
+const char *mjv_source_get_user (const struct mjv_source *const);
+const char *mjv_source_get_pass (const struct mjv_source *const);

@@ -8,7 +8,7 @@
 #include <pthread.h>
 
 #include "mjv_log.h"
-#include "mjv_config_source.h"
+#include "mjv_source.h"
 #include "mjv_frame.h"
 #include "mjv_grabber.h"
 
@@ -66,7 +66,7 @@ struct mjv_grabber
 	unsigned int response_code;
 	unsigned int content_length;
 	struct timespec last_emitted;
-	struct mjv_config_source *config;
+	struct mjv_source *source;
 
 	char *buf;	// read buffer;
 	char *cur;	// current char under inspection in buffer;
@@ -97,7 +97,7 @@ static int state_image_by_content_length (struct mjv_grabber *);
 static int state_image_by_eof_search (struct mjv_grabber *);
 
 struct mjv_grabber *
-mjv_grabber_create (struct mjv_config_source *config)
+mjv_grabber_create (struct mjv_source *source)
 {
 	struct mjv_grabber *s = NULL;
 
@@ -116,7 +116,7 @@ mjv_grabber_create (struct mjv_config_source *config)
 	s->state = STATE_HTTP_BANNER;
 	s->last_emitted.tv_sec = 0;
 	s->last_emitted.tv_nsec = 0;
-	s->config = config;
+	s->source = source;
 
 	s->callback = NULL;
 	s->user_pointer = NULL;
@@ -139,7 +139,7 @@ mjv_grabber_destroy (struct mjv_grabber *s)
 	if (s == NULL) {
 		return;
 	}
-	log_info("Destroying source %s\n", mjv_config_source_get_name(s->config));
+	log_info("Destroying source %s\n", mjv_source_get_name(s->source));
 	free(s->boundary);
 	free(s->buf);
 	free(s);
@@ -202,7 +202,7 @@ mjv_grabber_run (struct mjv_grabber *s)
 		state_image_by_content_length,
 		state_image_by_eof_search
 	};
-	if ((fd = mjv_config_source_get_fd(s->config)) < 0) {
+	if ((fd = mjv_source_get_fd(s->source)) < 0) {
 		log_error("Invalid file descriptor\n");
 		return MJV_GRABBER_READ_ERROR;
 	}

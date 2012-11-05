@@ -11,9 +11,9 @@
 #include <errno.h>
 
 #include "mjv_log.h"
-#include "mjv_config_source.h"
+#include "mjv_source.h"
 
-struct mjv_config_source {
+struct mjv_source {
 	char *name;
 	int   type;
 	int   fd;
@@ -32,11 +32,11 @@ struct mjv_config_source {
 	};
 };
 
-static bool set_default_name (struct mjv_config_source *s);
-static bool open_file (struct mjv_config_source *s);
-static bool open_network (struct mjv_config_source *s);
-static bool write_http_request (struct mjv_config_source *s);
-static bool write_auth_string (struct mjv_config_source *s);
+static bool set_default_name (struct mjv_source *s);
+static bool open_file (struct mjv_source *s);
+static bool open_network (struct mjv_source *s);
+static bool write_http_request (struct mjv_source *s);
+static bool write_auth_string (struct mjv_source *s);
 static void base64_encode (char *const src, size_t srclen, char *const dst);
 
 static char err_write_failed[] = "Write failed\n";
@@ -72,10 +72,10 @@ static char err_malloc_failed[] = "malloc() failed\n";
 #define SAFE_WRITE_STR(x) \
 		SAFE_WRITE(x, STR_LEN(x))
 
-struct mjv_config_source *
-mjv_config_source_create_from_file (const char *const name, const char *const file, const int usec)
+struct mjv_source *
+mjv_source_create_from_file (const char *const name, const char *const file, const int usec)
 {
-	struct mjv_config_source *s;
+	struct mjv_source *s;
 
 	if (malloc_fail(s)) {
 		goto err_0;
@@ -96,10 +96,10 @@ err_1:	free(s);
 err_0:	return NULL;
 }
 
-struct mjv_config_source *
-mjv_config_source_create_from_network (const char *const name, const char *const host, const char *const path, const char *const user, const char *const pass, const int port)
+struct mjv_source *
+mjv_source_create_from_network (const char *const name, const char *const host, const char *const path, const char *const user, const char *const pass, const int port)
 {
-	struct mjv_config_source *s;
+	struct mjv_source *s;
 
 	if (malloc_fail(s)) {
 		goto err_0;
@@ -127,7 +127,7 @@ err_0:	return NULL;
 }
 
 void
-mjv_config_source_destroy (struct mjv_config_source *const s)
+mjv_source_destroy (struct mjv_source *const s)
 {
 	if (s == NULL) {
 		return;
@@ -149,19 +149,19 @@ mjv_config_source_destroy (struct mjv_config_source *const s)
 	free(s);
 }
 
-const char *mjv_config_source_get_name (const struct mjv_config_source *const s) { return s->name; }
-const char *mjv_config_source_get_file (const struct mjv_config_source *const s) { return s->file; }
-const char *mjv_config_source_get_host (const struct mjv_config_source *const s) { return s->host; }
-const char *mjv_config_source_get_path (const struct mjv_config_source *const s) { return s->path; }
-const char *mjv_config_source_get_user (const struct mjv_config_source *const s) { return s->user; }
-const char *mjv_config_source_get_pass (const struct mjv_config_source *const s) { return s->pass; }
-      int   mjv_config_source_get_type (const struct mjv_config_source *const s) { return s->type; }
-      int   mjv_config_source_get_port (const struct mjv_config_source *const s) { return s->port; }
-      int   mjv_config_source_get_usec (const struct mjv_config_source *const s) { return s->usec; }
-      int   mjv_config_source_get_fd   (const struct mjv_config_source *const s) { return s->fd;   }
+const char *mjv_source_get_name (const struct mjv_source *const s) { return s->name; }
+const char *mjv_source_get_file (const struct mjv_source *const s) { return s->file; }
+const char *mjv_source_get_host (const struct mjv_source *const s) { return s->host; }
+const char *mjv_source_get_path (const struct mjv_source *const s) { return s->path; }
+const char *mjv_source_get_user (const struct mjv_source *const s) { return s->user; }
+const char *mjv_source_get_pass (const struct mjv_source *const s) { return s->pass; }
+      int   mjv_source_get_type (const struct mjv_source *const s) { return s->type; }
+      int   mjv_source_get_port (const struct mjv_source *const s) { return s->port; }
+      int   mjv_source_get_usec (const struct mjv_source *const s) { return s->usec; }
+      int   mjv_source_get_fd   (const struct mjv_source *const s) { return s->fd;   }
 
 int
-mjv_config_source_open (struct mjv_config_source *cs)
+mjv_source_open (struct mjv_source *cs)
 {
 	switch (cs->type) {
 		case TYPE_FILE:    return open_file(cs);
@@ -171,7 +171,7 @@ mjv_config_source_open (struct mjv_config_source *cs)
 }
 
 static bool
-set_default_name (struct mjv_config_source *s)
+set_default_name (struct mjv_source *s)
 {
 	char name[] = "(unnamed)";
 	if ((s->name = malloc(sizeof(name))) == NULL) {
@@ -183,7 +183,7 @@ set_default_name (struct mjv_config_source *s)
 }
 
 static bool
-open_file (struct mjv_config_source *s)
+open_file (struct mjv_source *s)
 {
 	if (s->file == NULL) {
 		log_error("No filename given\n");
@@ -197,7 +197,7 @@ open_file (struct mjv_config_source *s)
 }
 
 static bool
-open_network (struct mjv_config_source *s)
+open_network (struct mjv_source *s)
 {
 	char port_str[6];
 	struct addrinfo hints;
@@ -248,7 +248,7 @@ open_network (struct mjv_config_source *s)
 }
 
 static bool
-write_http_request (struct mjv_config_source *s)
+write_http_request (struct mjv_source *s)
 {
 	bool ret = true;
 	char *buffer = NULL;
@@ -285,7 +285,7 @@ err:	free(buffer);
 }
 
 static bool
-write_auth_string (struct mjv_config_source *s)
+write_auth_string (struct mjv_source *s)
 {
 	bool ret = true;
 	char *header = NULL;

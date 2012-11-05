@@ -5,7 +5,7 @@
 #include <libconfig.h>
 
 #include "mjv_log.h"
-#include "mjv_config_source.h"
+#include "mjv_source.h"
 #include "mjv_config.h"
 
 #define malloc_fail(s)   ((s = malloc(sizeof(*(s)))) == NULL)
@@ -37,7 +37,7 @@ void
 mjv_config_destroy (struct mjv_config *const c)
 {
 	config_destroy(c->config);
-	g_list_free_full(c->sources, (GDestroyNotify)mjv_config_source_destroy);
+	g_list_free_full(c->sources, (GDestroyNotify)mjv_source_destroy);
 	free(c->config);
 	free(c);
 }
@@ -77,7 +77,7 @@ mjv_config_get_sources (struct mjv_config *const c)
 		const char *user = NULL;
 		const char *pass = NULL;
 		const char *file = NULL;
-		struct mjv_config_source *mjv_config_source;
+		struct mjv_source *mjv_source;
 		config_setting_t *source = config_setting_get_elem(sources, i);
 
 		if (config_setting_lookup_string(source, "type", &type) == CONFIG_FALSE) {
@@ -89,7 +89,7 @@ mjv_config_get_sources (struct mjv_config *const c)
 			config_setting_lookup_string(source, "name", &name);
 			config_setting_lookup_string(source, "file", &file);
 
-			if ((mjv_config_source = mjv_config_source_create_from_file(name, file, usec)) == NULL) {
+			if ((mjv_source = mjv_source_create_from_file(name, file, usec)) == NULL) {
 				// TODO error handling
 				continue;
 			}
@@ -103,7 +103,7 @@ mjv_config_get_sources (struct mjv_config *const c)
 			config_setting_lookup_string(source, "user", &user);
 			config_setting_lookup_string(source, "pass", &pass);
 
-			if ((mjv_config_source = mjv_config_source_create_from_network(name, host, path, user, pass, port)) == NULL) {
+			if ((mjv_source = mjv_source_create_from_network(name, host, path, user, pass, port)) == NULL) {
 				// TODO error handling
 				continue;
 			}
@@ -111,7 +111,7 @@ mjv_config_get_sources (struct mjv_config *const c)
 		else {
 			continue;
 		}
-		c->sources = g_list_append(c->sources, mjv_config_source);
+		c->sources = g_list_append(c->sources, mjv_source);
 	}
 	return c->sources;
 }

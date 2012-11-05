@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <getopt.h>
 #include <errno.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include "mjv_log.c"
 #include "mjv_frame.h"
@@ -70,7 +72,21 @@ process_cmdline (int argc, char **argv, char **name, char **filename, int *usec,
 }
 
 static void
-write_image_file (char *data, size_t nbytes, unsigned int framenum)
+timestamp_file (const char *const filename, const struct timespec *const timestamp)
+{
+	struct timespec times[2];
+
+	times[0].tv_sec = timestamp->tv_sec;
+	times[0].tv_nsec = timestamp->tv_nsec;
+
+	times[1].tv_sec = timestamp->tv_sec;
+	times[1].tv_nsec = timestamp->tv_nsec;
+
+	utimensat(AT_FDCWD, filename, times, 0);
+}
+
+static void
+write_image_file (char *data, size_t nbytes, unsigned int framenum, const struct timespec *const timestamp)
 {
 	FILE *fp;
 	char filename_pat[] = "%0_d.jpg";
@@ -106,6 +122,7 @@ write_image_file (char *data, size_t nbytes, unsigned int framenum)
 			log_debug("writing %s\n", filename);
 			fwrite(data, nbytes, 1, fp);
 			fclose(fp);
+			timestamp_file(filename, timestamp);
 		}
 	}
 }
@@ -119,7 +136,7 @@ got_frame_callback (struct mjv_frame *f, void *data)
 	log_debug("got frame %d\n", n_frames);
 
 	// Write to file:
-	write_image_file((char *)mjv_frame_get_rawbits(f), mjv_frame_get_num_rawbits(f), n_frames);
+	write_image_file((char *)mjv_frame_get_rawbits(f), mjv_frame_get_num_rawbits(f), n_frames, mjv_frame_get_timestamp(f));
 
 	// We are responsible for freeing the mjv_frame when we're done with it:
 	mjv_frame_destroy(f);

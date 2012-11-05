@@ -83,6 +83,7 @@ struct mjv_thread {
 
 static void *thread_main (void *);
 static void callback_got_frame (struct mjv_frame *, void *);
+static void destroy_pixels (guchar *, gpointer);
 static void draw_blinker (cairo_t *, int, int, int);
 static void draw_spinner (cairo_t *, int, int, int);
 static void *spinner_thread_main (void *);
@@ -90,20 +91,20 @@ static void framerate_insert_datapoint (struct mjv_thread *, const struct timesp
 static void framerate_estimator (struct mjv_thread *);
 static float timespec_diff (struct timespec *, struct timespec *);
 
-static void framerate_thread_run(struct mjv_thread *t);
-static void framerate_thread_kill(struct mjv_thread *t);
-static void *framerate_thread_main(void *user_data);
+static void framerate_thread_run (struct mjv_thread *);
+static void framerate_thread_kill (struct mjv_thread *);
+static void *framerate_thread_main (void *);
 
-static void create_frame(struct mjv_thread *thread);
-static void create_frame_toolbar(struct mjv_thread *thread);
-static GtkWidget *create_frame_statusbar(struct mjv_thread *thread);
+static void create_frame (struct mjv_thread *);
+static void create_frame_toolbar (struct mjv_thread *);
+static GtkWidget *create_frame_statusbar (struct mjv_thread *);
 
-static void create_frame(struct mjv_thread *thread);
-static void create_frame_toolbar(struct mjv_thread *thread);
-static GtkWidget *create_frame_statusbar(struct mjv_thread *thread);
+static void create_frame (struct mjv_thread *);
+static void create_frame_toolbar (struct mjv_thread *);
+static GtkWidget *create_frame_statusbar (struct mjv_thread *);
 
-static char *status_string(struct mjv_thread *thread);
-static void update_state(struct mjv_thread *thread, enum state state);
+static char *status_string (struct mjv_thread *);
+static void update_state (struct mjv_thread *, enum state state);
 
 static void
 print_source_name (cairo_t *cr, const char *name)
@@ -248,7 +249,7 @@ mjv_thread_cancel (struct mjv_thread *t)
 }
 
 GtkWidget *
-mjv_thread_create_area(struct mjv_thread *t)
+mjv_thread_create_area (struct mjv_thread *t)
 {
 	// Create the frame for this thread.
 	create_frame(t);
@@ -506,7 +507,7 @@ spinner_thread_main (void *user_data)
 		// Get absolute time, calculated from the start time and the number
 		// of iterations, of when the next tick should be issued. Aligning
 		// the timing to an absolute clock prevents framerate drift.
-		g_mutex_lock( t->spinner.mutex );
+		g_mutex_lock(t->spinner.mutex);
 		wake.tv_sec  = t->spinner.start.tv_sec + t->spinner.iterations / ITERS_PER_SEC;
 		wake.tv_nsec = t->spinner.start.tv_nsec + (t->spinner.iterations % ITERS_PER_SEC) * INTERVAL_NSEC;
 		g_mutex_unlock(t->spinner.mutex);
@@ -558,7 +559,7 @@ framerate_thread_main (void *user_data)
 {
 	float fps;
 	char buf[20];
-	struct mjv_thread *t = (struct mjv_thread*)user_data;
+	struct mjv_thread *t = (struct mjv_thread *)user_data;
 
 	for (;;)
 	{

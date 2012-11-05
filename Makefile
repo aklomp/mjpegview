@@ -16,8 +16,8 @@ all: $(PROG) $(MJVSINGLE_PROG)
 OBJS = \
   mjv_config_source.o \
   mjv_frame.o \
-  mjv_log.o \
-  mjv_source.o
+  mjv_grabber.o \
+  mjv_log.o
 
 # These object files depend only on GLib:
 OBJS_GLIB = \
@@ -46,7 +46,7 @@ MJVSINGLE_OBJS = mjvsingle.o
 MJVSINGLE_CFLAGS = -O2 -Werror -Wall -Wextra -fomit-frame-pointer -pipe
 MJVSINGLE_LDFLAGS = -ljpeg -lrt
 
-$(MJVSINGLE_PROG): $(MJVSINGLE_OBJS) mjv_config_source.o mjv_source.o mjv_frame.o
+$(MJVSINGLE_PROG): $(MJVSINGLE_OBJS) mjv_config_source.o mjv_grabber.o mjv_frame.o
 	$(CC) $(MJVSINGLE_LDFLAGS) $^ -o $@
 
 $(MJVSINGLE_OBJS): %.o: %.c

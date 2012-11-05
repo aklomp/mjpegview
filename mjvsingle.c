@@ -11,7 +11,7 @@
 #include "mjv_log.c"
 #include "mjv_frame.h"
 #include "mjv_config_source.h"
-#include "mjv_source.h"
+#include "mjv_grabber.h"
 
 // This is a really simple framegrabber for mjpeg streams. It is intended to
 // compile with the least possible dependencies, to make it useful on headless,
@@ -155,7 +155,7 @@ main (int argc, char **argv)
 	int port = 0;
 	int usec = 100;
 	struct mjv_config_source *cs = NULL;
-	struct mjv_source *s = NULL;
+	struct mjv_grabber *g = NULL;
 
 	if (!process_cmdline(argc, argv, &name, &filename, &usec, &host, &path, &user, &pass, &port)) {
 		ret = 1;
@@ -180,8 +180,8 @@ main (int argc, char **argv)
 		ret = 1;
 		goto exit;
 	}
-	if ((s = mjv_source_create(cs)) == NULL) {
-		log_error("Error: could not create source\n");	// TODO: non-descriptive error messages...
+	if ((g = mjv_grabber_create(cs)) == NULL) {
+		log_error("Error: could not create grabber\n");	// TODO: non-descriptive error messages...
 		ret = 1;
 		goto exit;
 	}
@@ -191,14 +191,14 @@ main (int argc, char **argv)
 		goto exit;
 	}
 	// Grabbed frames will be handled by got_frame_callback():
-	mjv_source_set_callback(s, got_frame_callback, NULL);
+	mjv_grabber_set_callback(g, got_frame_callback, NULL);
 
 	// Run the grabber; control stays here until the stream terminates or the user interrupts:
-	mjv_source_capture(s);
+	mjv_grabber_run(g);
 
 	log_info("Frames processed: %d\n", n_frames);
 
-exit:	mjv_source_destroy(s);
+exit:	mjv_grabber_destroy(g);
 	mjv_config_source_destroy(cs);
 	free(pass);
 	free(user);

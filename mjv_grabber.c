@@ -10,7 +10,7 @@
 #include "mjv_log.h"
 #include "mjv_config_source.h"
 #include "mjv_frame.h"
-#include "mjv_source.h"
+#include "mjv_grabber.h"
 
 // Buffer must be large enough to hold the entire JPEG frame:
 #define BUF_SIZE	100000
@@ -55,7 +55,7 @@ char header_content_type_two[] = "Content-type:";
 char header_content_length_one[] = "Content-Length:";
 char header_content_length_two[] = "Content-length:";
 
-struct mjv_source
+struct mjv_grabber
 {
 	int nread;		// return value of read();
 	int mimetype;
@@ -79,27 +79,27 @@ struct mjv_source
 	void *user_pointer;
 };
 
-static int fetch_header_line (struct mjv_source *, char **, unsigned int *);
-static inline int increment_cur (struct mjv_source *);
+static int fetch_header_line (struct mjv_grabber *, char **, unsigned int *);
+static inline int increment_cur (struct mjv_grabber *);
 static inline bool is_numeric (char);
 static inline unsigned int simple_atoi (const char *, const char *);
-static int interpret_content_type (struct mjv_source *, char *, unsigned int);
-static bool got_new_frame (struct mjv_source *, char *, unsigned int);
-static void adjust_streambuf (struct mjv_source *);
+static int interpret_content_type (struct mjv_grabber *, char *, unsigned int);
+static bool got_new_frame (struct mjv_grabber *, char *, unsigned int);
+static void adjust_streambuf (struct mjv_grabber *);
 static void artificial_delay (unsigned int, struct timespec *);
 
-static int state_http_banner (struct mjv_source *);
-static int state_http_header (struct mjv_source *);
-static int state_find_boundary (struct mjv_source *);
-static int state_http_subheader (struct mjv_source *);
-static int state_find_image (struct mjv_source *);
-static int state_image_by_content_length (struct mjv_source *);
-static int state_image_by_eof_search (struct mjv_source *);
+static int state_http_banner (struct mjv_grabber *);
+static int state_http_header (struct mjv_grabber *);
+static int state_find_boundary (struct mjv_grabber *);
+static int state_http_subheader (struct mjv_grabber *);
+static int state_find_image (struct mjv_grabber *);
+static int state_image_by_content_length (struct mjv_grabber *);
+static int state_image_by_eof_search (struct mjv_grabber *);
 
-struct mjv_source *
-mjv_source_create (struct mjv_config_source *config)
+struct mjv_grabber *
+mjv_grabber_create (struct mjv_config_source *config)
 {
-	struct mjv_source *s = NULL;
+	struct mjv_grabber *s = NULL;
 
 	// Allocate memory for the structure:
 	if ((s = malloc(sizeof(*s))) == NULL) {
@@ -134,7 +134,7 @@ err:	if (s != NULL) {
 }
 
 void
-mjv_source_destroy (struct mjv_source *s)
+mjv_grabber_destroy (struct mjv_grabber *s)
 {
 	if (s == NULL) {
 		return;
@@ -146,14 +146,14 @@ mjv_source_destroy (struct mjv_source *s)
 }
 
 void
-mjv_source_set_callback (struct mjv_source *s, void (*got_frame_callback)(struct mjv_frame*, void*), void *user_pointer)
+mjv_grabber_set_callback (struct mjv_grabber *s, void (*got_frame_callback)(struct mjv_frame*, void*), void *user_pointer)
 {
 	s->callback = got_frame_callback;
 	s->user_pointer = user_pointer;
 }
 
 static void
-adjust_streambuf (struct mjv_source *s)
+adjust_streambuf (struct mjv_grabber *s)
 {
 	// Cheap test: if anchored at start of buffer, nothing to do:
 	if (s->anchor == s->buf) {
@@ -183,8 +183,8 @@ adjust_streambuf (struct mjv_source *s)
 	}
 }
 
-enum mjv_source_status
-mjv_source_capture (struct mjv_source *s)
+enum mjv_grabber_status
+mjv_grabber_run (struct mjv_grabber *s)
 {
 	int fd;
 	int available;
@@ -192,8 +192,8 @@ mjv_source_capture (struct mjv_source *s)
 	struct timespec timeout;
 
 	// Jump table per state; order corresponds with
-	// the state enum at the top of this file;
-	int (*state_jump_table[])(struct mjv_source *) = {
+	// the state enum at the top of this file:
+	int (*state_jump_table[])(struct mjv_grabber *) = {
 		state_http_banner,
 		state_http_header,
 		state_find_boundary,
@@ -204,7 +204,7 @@ mjv_source_capture (struct mjv_source *s)
 	};
 	if ((fd = mjv_config_source_get_fd(s->config)) < 0) {
 		log_error("Invalid file descriptor\n");
-		return MJV_SOURCE_READ_ERROR;
+		return MJV_GRABBER_READ_ERROR;
 	}
 	for (;;)
 	{
@@ -228,23 +228,23 @@ mjv_source_capture (struct mjv_source *s)
 		if (available == 0) {
 			// timeout reached
 			log_info("Timeout reached. Giving up.\n");
-			return MJV_SOURCE_TIMEOUT;
+			return MJV_GRABBER_TIMEOUT;
 		}
 		if (available < 0) {
 			if (errno == EINTR) {
 				continue;
 			}
 			log_error("%s\n", strerror(errno));
-			return MJV_SOURCE_READ_ERROR;
+			return MJV_GRABBER_READ_ERROR;
 		}
 		s->nread = read(fd, s->head, BUF_SIZE - (s->head - s->buf));
 		if (s->nread < 0) {
 			log_error("%s\n", strerror(errno));
-			return MJV_SOURCE_READ_ERROR;
+			return MJV_GRABBER_READ_ERROR;
 		}
 		else if (s->nread == 0) {
 			log_info("End of file\n");
-			return MJV_SOURCE_PREMATURE_EOF;
+			return MJV_GRABBER_PREMATURE_EOF;
 		}
 		// buflast is always ONE PAST the real last char:
 		s->head += s->nread;
@@ -263,18 +263,18 @@ next_state: 	switch (state_jump_table[s->state](s))
 
 			case READ_ERROR:
 				log_error("READ_ERROR\n");
-				return MJV_SOURCE_READ_ERROR;
+				return MJV_GRABBER_READ_ERROR;
 
 			case CORRUPT_HEADER:
 				log_error("Corrupt header\n");
-				return MJV_SOURCE_CORRUPT_HEADER;
+				return MJV_GRABBER_CORRUPT_HEADER;
 		}
 	}
-	return MJV_SOURCE_SUCCESS;
+	return MJV_GRABBER_SUCCESS;
 }
 
 static int
-state_http_banner (struct mjv_source *s)
+state_http_banner (struct mjv_grabber *s)
 {
 	int ret;
 	char *line;
@@ -320,7 +320,7 @@ state_http_banner (struct mjv_source *s)
 }
 
 static int
-state_http_header (struct mjv_source *s)
+state_http_header (struct mjv_grabber *s)
 {
 	int ret;
 	char *line;
@@ -359,7 +359,7 @@ state_http_header (struct mjv_source *s)
 }
 
 static int
-state_find_boundary (struct mjv_source *s)
+state_find_boundary (struct mjv_grabber *s)
 {
 	// Loop over the input till we find a \r\n or an \n followed by
 	// our boundary marker, and another \r\n or \n:
@@ -409,7 +409,7 @@ state_find_boundary (struct mjv_source *s)
 }
 
 static int
-state_http_subheader (struct mjv_source *s)
+state_http_subheader (struct mjv_grabber *s)
 {
 	int ret;
 	char *line;
@@ -458,7 +458,7 @@ state_http_subheader (struct mjv_source *s)
 }
 
 static int
-state_find_image (struct mjv_source *s)
+state_find_image (struct mjv_grabber *s)
 {
 	// Consume bytes from the buffer till we find the
 	// JPEG signature, which is 0xffd8:
@@ -495,7 +495,7 @@ state_find_image (struct mjv_source *s)
 }
 
 static int
-state_image_by_content_length (struct mjv_source *s)
+state_image_by_content_length (struct mjv_grabber *s)
 {
 #define BYTES_LEFT_IN_BUF (s->head - s->cur - 1)
 #define BYTES_FOUND  (s->cur + 1 - s->anchor)
@@ -536,7 +536,7 @@ state_image_by_content_length (struct mjv_source *s)
 }
 
 static int
-state_image_by_eof_search (struct mjv_source *s)
+state_image_by_eof_search (struct mjv_grabber *s)
 {
 	// If no content-length known, then there's nothing we can
 	// do but seek the EOF marker, 0xffd9, one byte at a time:
@@ -563,14 +563,14 @@ is_numeric (char c)
 }
 
 static inline int
-increment_cur (struct mjv_source *s)
+increment_cur (struct mjv_grabber *s)
 {
 	s->cur++;
 	return (s->cur >= s->head) ? OUT_OF_BYTES : READ_SUCCESS;
 }
 
 static int
-fetch_header_line (struct mjv_source *s, char **line, unsigned int *line_len)
+fetch_header_line (struct mjv_grabber *s, char **line, unsigned int *line_len)
 {
 	// Assume s->cur is on the first character of the line
 	// Consume buffer until we hit a line terminator:
@@ -613,7 +613,7 @@ simple_atoi (const char *first, const char *last)
 }
 
 static int
-interpret_content_type (struct mjv_source *s, char *line, unsigned int line_len)
+interpret_content_type (struct mjv_grabber *s, char *line, unsigned int line_len)
 {
 	char *cur;
 	char *last;
@@ -690,7 +690,7 @@ interpret_content_type (struct mjv_source *s, char *line, unsigned int line_len)
 }
 
 static bool
-got_new_frame (struct mjv_source *s, char *start, unsigned int len)
+got_new_frame (struct mjv_grabber *s, char *start, unsigned int len)
 {
 	struct mjv_frame *frame;
 

@@ -9,7 +9,7 @@
 #include "mjv_frame.h"
 #include "mjv_framebuf.h"
 #include "mjv_config_source.h"
-#include "mjv_source.h"
+#include "mjv_grabber.h"
 #include "mjv_thread.h"
 
 #define UNUSED_PARAM(x)		(void)(x)
@@ -64,7 +64,7 @@ struct mjv_thread {
 	unsigned int blinker;
 	struct spinner spinner;
 	struct mjv_config_source *cs;
-	struct mjv_source *source;
+	struct mjv_grabber *grabber;
 	struct mjv_framebuf *framebuf;
 	struct framerate framerate;
 	struct toolbar toolbar;
@@ -183,7 +183,7 @@ mjv_thread_create (struct mjv_config_source *cs)
 	t->width   = 640;
 	t->height  = 480;
 	t->cs      = cs;
-	t->source  = NULL;
+	t->grabber = NULL;
 	t->mutex   = g_mutex_new();
 	t->canvas  = gtk_drawing_area_new();
 	t->state   = STATE_DISCONNECTED;
@@ -237,7 +237,7 @@ bool
 mjv_thread_cancel (struct mjv_thread *t)
 {
 	// Terminate a thread by sending it a cancel request, then waiting for
-	// it to join. The cancel request will be caught in mjv_source_capture.
+	// it to join. The cancel request will be caught in mjv_grabber_run.
 	if (pthread_cancel(t->pthread) != 0) {
 		return false;
 	}
@@ -308,7 +308,7 @@ thread_main (void *user_data)
 	struct mjv_thread *t = (struct mjv_thread *)user_data;
 
 	// The thread responds to pthread_cancel requests, but only
-	// at cancellation points. We set up mjv_source_capture's pselect()
+	// at cancellation points. We set up mjv_grabber_run's pselect()
 	// statement to be the only cancellation point that qualifies.
 	// The thread will then only cancel when waiting for IO.
 	pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
@@ -323,12 +323,12 @@ thread_main (void *user_data)
 		update_state(t, STATE_DISCONNECTED);
 		return NULL;
 	}
-	if ((t->source = mjv_source_create(t->cs)) == NULL) {
+	if ((t->grabber = mjv_grabber_create(t->cs)) == NULL) {
 		mjv_thread_hide_spinner(t);
 		update_state(t, STATE_DISCONNECTED);
 		return NULL;
 	}
-	mjv_source_set_callback(t->source, &callback_got_frame, (void *)t);
+	mjv_grabber_set_callback(t->grabber, &callback_got_frame, (void *)t);
 
 	// We are connected:
 	update_state(t, STATE_CONNECTED);
@@ -338,9 +338,10 @@ thread_main (void *user_data)
 
 	// Stay in this function till it terminates;
 	// meanwhile we get frames back through callback_got_frame():
-	mjv_source_capture(t->source);
+	mjv_grabber_run(t->grabber);
 
 	// We are disconnected:
+	mjv_grabber_destroy(t->grabber);
 	update_state(t, STATE_DISCONNECTED);
 	framerate_thread_kill(t);
 	return NULL;

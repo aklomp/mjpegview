@@ -40,7 +40,7 @@ mjv_framebuf_destroy (struct mjv_framebuf *framebuf)
 
 	// Loop over the list, destroy all frames:
 	for (link = g_list_first(framebuf->frames); link; link = g_list_next(link)) {
-		mjv_frame_destroy(MJV_FRAME(link));
+		mjv_frame_destroy((struct mjv_frame **)(&link->data));
 	}
 	// Destroy list itself:
 	g_list_free(framebuf->frames);
@@ -59,7 +59,7 @@ mjv_framebuf_append (struct mjv_framebuf *framebuf, struct mjv_frame *frame)
 	// delete the first frame:
 	if (framebuf->used == framebuf->capacity) {
 		first = g_list_first(framebuf->frames);
-		mjv_frame_destroy(MJV_FRAME(first));
+		mjv_frame_destroy((struct mjv_frame **)(&first->data));
 		framebuf->frames = g_list_delete_link(framebuf->frames, first);
 	}
 	else {

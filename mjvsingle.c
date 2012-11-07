@@ -139,7 +139,7 @@ got_frame_callback (struct mjv_frame *f, void *data)
 	write_image_file((char *)mjv_frame_get_rawbits(f), mjv_frame_get_num_rawbits(f), n_frames, mjv_frame_get_timestamp(f));
 
 	// We are responsible for freeing the mjv_frame when we're done with it:
-	mjv_frame_destroy(f);
+	mjv_frame_destroy(&f);
 }
 
 int

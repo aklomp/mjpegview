@@ -76,14 +76,16 @@ err:	if (f != NULL) {
 }
 
 void
-mjv_frame_destroy (struct mjv_frame *const f)
+mjv_frame_destroy (struct mjv_frame **const f)
 {
-	if (f != NULL) {
-		free(f->error);
-		free(f->rawbits);
-		free(f->timestamp);
-		free(f);
+	if (f == NULL || *f == NULL) {
+		return;
 	}
+	free((*f)->error);
+	free((*f)->rawbits);
+	free((*f)->timestamp);
+	free(*f);
+	*f = NULL;
 }
 
 // Trivial callback function when libjpeg encounters an error:

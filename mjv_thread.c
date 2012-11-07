@@ -380,7 +380,7 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 
 	// Convert from JPEG to pixbuf:
 	if ((pixels = mjv_frame_to_pixbuf(frame)) == NULL) {
-		mjv_frame_destroy(frame);
+		mjv_frame_destroy(&frame);
 		return;
 	}
 	unsigned int width = mjv_frame_get_width(frame);
@@ -430,7 +430,7 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 		update_framebuf_label(thread);
 	}
 	else {
-		mjv_frame_destroy(frame);
+		mjv_frame_destroy(&frame);
 	}
 }
 

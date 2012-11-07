@@ -32,7 +32,7 @@ main (int argc, char **argv)
 	}
 	mjv_gui_main(argc, argv, sources_list);
 
-	mjv_config_destroy(config);
+	mjv_config_destroy(&config);
 
 	return 0;
 }

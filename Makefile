@@ -47,7 +47,7 @@ MJVSINGLE_OBJS = mjvsingle.o
 MJVSINGLE_CFLAGS = -O2 -Werror -Wall -Wextra -fomit-frame-pointer -pipe
 MJVSINGLE_LDFLAGS = -ljpeg -lrt
 
-$(MJVSINGLE_PROG): $(MJVSINGLE_OBJS) mjv_source.o mjv_grabber.o mjv_frame.o
+$(MJVSINGLE_PROG): $(MJVSINGLE_OBJS) mjv_source.o mjv_grabber.o mjv_frame.o mjv_framerate.o
 	$(CC) $(MJVSINGLE_LDFLAGS) $^ -o $@
 
 $(MJVSINGLE_OBJS): %.o: %.c

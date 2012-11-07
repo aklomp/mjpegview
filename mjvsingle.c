@@ -11,6 +11,7 @@
 #include "mjv_log.c"
 #include "mjv_frame.h"
 #include "mjv_source.h"
+#include "mjv_framerate.h"
 #include "mjv_grabber.h"
 
 // This is a really simple framegrabber for mjpeg streams. It is intended to
@@ -86,6 +87,44 @@ timestamp_file (const char *const filename, const struct timespec *const timesta
 }
 
 static void
+print_info (unsigned int framenum, float fps)
+{
+	int start;
+	char buf[50];
+	static int first = 1;
+
+	if (first == 0)
+	{
+		// Move cursor one line upwards:
+		buf[0] = 033;
+		buf[1] = '[';
+		buf[2] = '1';
+		buf[3] = 'F';
+
+		// Clear entire line:
+		buf[4] = 033;
+		buf[5] = '[';
+		buf[6] = '2';
+		buf[7] = 'K';
+
+		start = 8;
+	}
+	else {
+		first = 0;
+		start = 0;
+	}
+	size_t len = (fps < 0.0)
+	    ? start + snprintf(buf + start, sizeof(buf) - start, "Frame %d, (stalled)\n", framenum)
+	    : start + snprintf(buf + start, sizeof(buf) - start, "Frame %d, %0.2f fps\n", framenum, fps);
+
+	if (len > sizeof(buf)) {
+	       len = sizeof(buf);
+	}
+	write(STDOUT_FILENO, buf, len);
+	fsync(STDOUT_FILENO);
+}
+
+static void
 write_image_file (char *data, size_t nbytes, unsigned int framenum, const struct timespec *const timestamp)
 {
 	FILE *fp;
@@ -130,10 +169,14 @@ write_image_file (char *data, size_t nbytes, unsigned int framenum, const struct
 static void
 got_frame_callback (struct mjv_frame *f, void *data)
 {
-	(void)data;
+	struct mjv_framerate *fr = data;
 
 	n_frames++;
 	log_debug("got frame %d\n", n_frames);
+
+	// Feed the framerate estimator, get estimate:
+	mjv_framerate_insert_datapoint(fr, mjv_frame_get_timestamp(f));
+	print_info(n_frames, mjv_framerate_estimate(fr));
 
 	// Write to file:
 	write_image_file((char *)mjv_frame_get_rawbits(f), mjv_frame_get_num_rawbits(f), n_frames, mjv_frame_get_timestamp(f));
@@ -156,6 +199,7 @@ main (int argc, char **argv)
 	int usec = 100;
 	struct mjv_source *s = NULL;
 	struct mjv_grabber *g = NULL;
+	struct mjv_framerate *fr = NULL;
 
 	if (!process_cmdline(argc, argv, &name, &filename, &usec, &host, &path, &user, &pass, &port)) {
 		ret = 1;
@@ -185,20 +229,26 @@ main (int argc, char **argv)
 		ret = 1;
 		goto exit;
 	}
+	if ((fr = mjv_framerate_create()) == NULL) {
+		log_error("Error: could not create framerate estimator\n");
+		ret = 1;
+		goto exit;
+	}
 	if (mjv_source_open(s) == 0) {
 		log_error("Error: could not open config source\n");
 		ret = 1;
 		goto exit;
 	}
 	// Grabbed frames will be handled by got_frame_callback():
-	mjv_grabber_set_callback(g, got_frame_callback, NULL);
+	mjv_grabber_set_callback(g, got_frame_callback, fr);
 
 	// Run the grabber; control stays here until the stream terminates or the user interrupts:
 	mjv_grabber_run(g);
 
 	log_info("Frames processed: %d\n", n_frames);
 
-exit:	mjv_grabber_destroy(&g);
+exit:	mjv_framerate_destroy(&fr);
+	mjv_grabber_destroy(&g);
 	mjv_source_destroy(&s);
 	free(pass);
 	free(user);

@@ -13,7 +13,7 @@ enum mjv_grabber_status
 };
 
 struct mjv_grabber *mjv_grabber_create();
-void mjv_grabber_destroy (struct mjv_grabber*);
+void mjv_grabber_destroy (struct mjv_grabber**);
 
 // The main function. This grabs frames from the source and relays them
 // to a callback function:

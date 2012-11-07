@@ -218,6 +218,7 @@ mjv_thread_destroy (struct mjv_thread *t)
 	g_mutex_free(t->spinner.mutex);
 	g_mutex_free(t->framerate.mutex);
 	pthread_attr_destroy(&t->pthread_attr);
+	mjv_grabber_destroy(&t->grabber);
 	mjv_framebuf_destroy(t->framebuf);
 	if (t->pixbuf != NULL) {
 		g_object_unref(t->pixbuf);
@@ -342,7 +343,7 @@ thread_main (void *user_data)
 	mjv_grabber_run(t->grabber);
 
 	// We are disconnected:
-	mjv_grabber_destroy(t->grabber);
+	mjv_grabber_destroy(&t->grabber);
 	update_state(t, STATE_DISCONNECTED);
 	framerate_thread_kill(t);
 	return NULL;

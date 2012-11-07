@@ -125,15 +125,16 @@ err:	if (s != NULL) {
 }
 
 void
-mjv_grabber_destroy (struct mjv_grabber *s)
+mjv_grabber_destroy (struct mjv_grabber **s)
 {
-	if (s == NULL) {
+	if (s == NULL || *s == NULL) {
 		return;
 	}
-	log_info("Destroying source %s\n", mjv_source_get_name(s->source));
-	free(s->boundary);
-	free(s->buf);
-	free(s);
+	log_info("Destroying source %s\n", mjv_source_get_name((*s)->source));
+	free((*s)->boundary);
+	free((*s)->buf);
+	free(*s);
+	*s = NULL;
 }
 
 void

@@ -15,6 +15,7 @@ all: $(PROG) $(MJVSINGLE_PROG)
 # These object files do not depend on GLib or GTK+-2:
 OBJS = \
   mjv_frame.o \
+  mjv_framerate.o \
   mjv_grabber.o \
   mjv_log.o \
   mjv_source.o

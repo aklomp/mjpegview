@@ -8,6 +8,7 @@
 
 #include "mjv_frame.h"
 #include "mjv_framebuf.h"
+#include "mjv_framerate.h"
 #include "mjv_source.h"
 #include "mjv_grabber.h"
 #include "mjv_thread.h"
@@ -28,16 +29,6 @@ struct spinner {
 	unsigned int iterations;
 	struct timespec start;
 
-	pthread_t pthread;
-};
-
-#define FRAMERATE_MEMORY  15
-
-struct framerate {
-	float fps;
-	int nmemory;
-	struct timespec memory[FRAMERATE_MEMORY];
-	GMutex *mutex;
 	pthread_t pthread;
 };
 
@@ -66,10 +57,13 @@ struct mjv_thread {
 	struct mjv_source *source;
 	struct mjv_grabber *grabber;
 	struct mjv_framebuf *framebuf;
-	struct framerate framerate;
 	struct toolbar toolbar;
 	struct statusbar statusbar;
 	enum state state;
+
+	struct mjv_framerate *framerate;
+	GMutex *framerate_mutex;
+	pthread_t framerate_pthread;
 
 	pthread_t      pthread;
 	pthread_attr_t pthread_attr;
@@ -87,13 +81,11 @@ static void destroy_pixels (guchar *, gpointer);
 static void draw_blinker (cairo_t *, int, int, int);
 static void draw_spinner (cairo_t *, int, int, int);
 static void *spinner_thread_main (void *);
-static void framerate_insert_datapoint (struct mjv_thread *, const struct timespec *const);
-static void framerate_estimator (struct mjv_thread *);
-static float timespec_diff (struct timespec *, struct timespec *);
 
 static void framerate_thread_run (struct mjv_thread *);
 static void framerate_thread_kill (struct mjv_thread *);
 static void *framerate_thread_main (void *);
+static void framerate_insert_datapoint (struct mjv_thread *, const struct timespec *const);
 
 static void create_frame (struct mjv_thread *);
 static void create_frame_toolbar (struct mjv_thread *);
@@ -192,8 +184,8 @@ mjv_thread_create (struct mjv_source *source)
 	t->spinner.step = 0;
 	t->spinner.mutex = g_mutex_new();
 
-	t->framerate.fps = -1.0;
-	t->framerate.mutex = g_mutex_new();
+	t->framerate = mjv_framerate_create();		// TODO: check return code
+	t->framerate_mutex = g_mutex_new();
 
 	t->framebuf = mjv_framebuf_create(50);
 
@@ -216,10 +208,11 @@ mjv_thread_destroy (struct mjv_thread *t)
 	}
 	g_mutex_free(t->mutex);
 	g_mutex_free(t->spinner.mutex);
-	g_mutex_free(t->framerate.mutex);
+	g_mutex_free(t->framerate_mutex);
 	pthread_attr_destroy(&t->pthread_attr);
 	mjv_grabber_destroy(&t->grabber);
 	mjv_framebuf_destroy(t->framebuf);
+	mjv_framerate_destroy(&t->framerate);
 	if (t->pixbuf != NULL) {
 		g_object_unref(t->pixbuf);
 	}
@@ -546,13 +539,13 @@ static void
 framerate_thread_run (struct mjv_thread *t)
 {
 	// TODO: error handling, ...
-	pthread_create(&t->framerate.pthread, NULL, framerate_thread_main, t);
+	pthread_create(&t->framerate_pthread, NULL, framerate_thread_main, t);
 }
 
 static void
 framerate_thread_kill (struct mjv_thread *t)
 {
-	pthread_cancel(t->framerate.pthread);
+	pthread_cancel(t->framerate_pthread);
 }
 
 static void *
@@ -562,13 +555,14 @@ framerate_thread_main (void *user_data)
 	char buf[20];
 	struct mjv_thread *t = (struct mjv_thread *)user_data;
 
+	pthread_detach(pthread_self());
+
 	for (;;)
 	{
 		// Get FPS value:
-		g_mutex_lock(t->framerate.mutex);
-		framerate_estimator(t);
-		fps = t->framerate.fps;
-		g_mutex_unlock(t->framerate.mutex);
+		g_mutex_lock(t->framerate_mutex);
+		fps = mjv_framerate_estimate(t->framerate);
+		g_mutex_unlock(t->framerate_mutex);
 
 		// Create label:
 		if (fps > 0.0) {
@@ -592,82 +586,9 @@ framerate_thread_main (void *user_data)
 static void
 framerate_insert_datapoint (struct mjv_thread *thread, const struct timespec *const ts)
 {
-	g_mutex_lock(thread->framerate.mutex);
-
-	// Shift existing timestamps one over:
-	memmove(&thread->framerate.memory[1], &thread->framerate.memory[0], sizeof(*thread->framerate.memory) * (FRAMERATE_MEMORY - 1));
-
-	// Add new value at start:
-	thread->framerate.memory[0] = *ts;
-
-	// Adjust total number of timestamps in history buffer:
-	if (thread->framerate.nmemory < FRAMERATE_MEMORY) {
-		thread->framerate.nmemory++;
-	}
-	g_mutex_unlock(thread->framerate.mutex);
-}
-
-static void
-framerate_estimator (struct mjv_thread *thread)
-{
-#define IN_USE  thread->framerate.nmemory
-#define OLDEST  thread->framerate.memory[IN_USE - 1]
-#define NEWEST  thread->framerate.memory[0]
-
-	float diff_among_frames;
-	float diff_with_now;
-	struct timespec now;
-
-	// This function must be run while the framerate
-	// mutex is locked!!
-
-	// No two values to compare yet?
-	if (IN_USE <= 1) {
-		thread->framerate.fps = -1.0;
-		return;
-	}
-	// Compare oldest and newest values:
-	diff_among_frames = timespec_diff(&NEWEST, &OLDEST);
-
-	// Get the wall time:
-	if (clock_gettime(CLOCK_REALTIME, &now) != 0) {
-		thread->framerate.fps = (IN_USE - 1) / diff_among_frames;
-		return;
-	}
-	// Calculate the difference between the last seen frame
-	// and the wall time:
-	diff_with_now = timespec_diff(&now, &NEWEST);
-
-	// If this difference is smaller than the average FPS of
-	// the frames among themselves, return the diff among frames:
-	// If we have 5 frames, we have 4 intervals; hence IN_USE - 1
-	if (diff_with_now < diff_among_frames) {
-		thread->framerate.fps = (IN_USE - 1) / diff_among_frames;
-		return;
-	}
-	// Else there has been a large time gap between the last received
-	// frame and the now (the connection has lagged). If this is less than
-	// 5 times the normal interval, we recalculate the FPS against the
-	// current wall time, else return invalid:
-	if (diff_with_now > diff_among_frames * 5.0) {
-		thread->framerate.fps = -1.0;
-	}
-	else {
-		diff_with_now = timespec_diff(&now, &OLDEST);
-		thread->framerate.fps = IN_USE / diff_with_now;
-	}
-
-#undef NEWEST
-#undef OLDEST
-#undef IN_USE
-}
-
-static float
-timespec_diff (struct timespec *new, struct timespec *old)
-{
-	time_t diff_sec = new->tv_sec - old->tv_sec;
-	long diff_nsec = new->tv_nsec - old->tv_nsec;
-	return diff_sec + ((float)diff_nsec / 1000000000.0);
+	g_mutex_lock(thread->framerate_mutex);
+	mjv_framerate_insert_datapoint(thread->framerate, ts);
+	g_mutex_unlock(thread->framerate_mutex);
 }
 
 static void

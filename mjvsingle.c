@@ -199,7 +199,7 @@ main (int argc, char **argv)
 	log_info("Frames processed: %d\n", n_frames);
 
 exit:	mjv_grabber_destroy(&g);
-	mjv_source_destroy(s);
+	mjv_source_destroy(&s);
 	free(pass);
 	free(user);
 	free(path);

@@ -36,8 +36,14 @@ mjv_config_init (void)
 void
 mjv_config_destroy (struct mjv_config *const c)
 {
+	GList *link = NULL;
+
 	config_destroy(c->config);
-	g_list_free_full(c->sources, (GDestroyNotify)mjv_source_destroy);
+
+	for (link = g_list_first(c->sources); link; link = g_list_next(link)) {
+		mjv_source_destroy((struct mjv_source **)(&link->data));
+	}
+	g_list_free(c->sources);
 	free(c->config);
 	free(c);
 }

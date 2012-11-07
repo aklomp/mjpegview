@@ -127,26 +127,27 @@ err_0:	return NULL;
 }
 
 void
-mjv_source_destroy (struct mjv_source *const s)
+mjv_source_destroy (struct mjv_source **const s)
 {
-	if (s == NULL) {
+	if (s == NULL || *s == NULL) {
 		return;
 	}
-	if (s->type == TYPE_NETWORK) {
-		free(s->name);
-		free(s->host);
-		free(s->path);
-		free(s->user);
-		free(s->pass);
+	if ((*s)->type == TYPE_NETWORK) {
+		free((*s)->name);
+		free((*s)->host);
+		free((*s)->path);
+		free((*s)->user);
+		free((*s)->pass);
 	}
-	else if (s->type == TYPE_FILE) {
-		free(s->name);
-		free(s->file);
+	else if ((*s)->type == TYPE_FILE) {
+		free((*s)->name);
+		free((*s)->file);
 	}
-	if (s->fd >= 0) {
-		close(s->fd);
+	if ((*s)->fd >= 0) {
+		close((*s)->fd);
 	}
-	free(s);
+	free(*s);
+	*s = NULL;
 }
 
 const char *mjv_source_get_name (const struct mjv_source *const s) { return s->name; }

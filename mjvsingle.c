@@ -12,6 +12,7 @@
 #include "mjv_frame.h"
 #include "mjv_source.h"
 #include "mjv_framerate.h"
+#include "mjv_filename.h"
 #include "mjv_grabber.h"
 
 // This is a really simple framegrabber for mjpeg streams. It is intended to
@@ -125,12 +126,10 @@ print_info (unsigned int framenum, float fps)
 }
 
 static void
-write_image_file (char *data, size_t nbytes, unsigned int framenum, const struct timespec *const timestamp)
+write_image_file (char *data, size_t nbytes, char *const srcname, unsigned int framenum, const struct timespec *const timestamp)
 {
 	FILE *fp;
-	char filename_pat[] = "%0_d.jpg";
-	size_t filename_len;
-	char patsize;
+	char *filename;
 
 	if (data == NULL || nbytes == 0) {
 		log_error("Error: frame contains no data\n");
@@ -140,30 +139,21 @@ write_image_file (char *data, size_t nbytes, unsigned int framenum, const struct
 		log_error("Error: framenum too large (over 9 digits)\n");
 		return;
 	}
-	patsize = (framenum >= 100000000) ? 9
-		: (framenum >= 10000000) ? 8
-		: (framenum >= 1000000) ? 7
-		: (framenum >= 100000) ? 6
-		: (framenum >= 10000) ? 5
-		: (framenum >= 1000) ? 4
-		: 3;
-
-	filename_pat[2] = '0' + patsize;
-	filename_len = sizeof(filename_pat) + patsize - 4;
-	{
-		char filename[filename_len];
-
-		snprintf(filename, filename_len, filename_pat, framenum);
-		if ((fp = fopen(filename, "w")) == NULL) {
-			perror("fopen()");
-		}
-		else {
-			log_debug("writing %s\n", filename);
-			fwrite(data, nbytes, 1, fp);
-			fclose(fp);
-			timestamp_file(filename, timestamp);
-		}
+	// TODO: let user specify the pattern:
+	if ((filename = mjv_filename_forge(srcname, framenum, "%f.jpg")) == NULL) {
+		log_error("Error: could not forge filename\n");
+		return;
 	}
+	if ((fp = fopen(filename, "w")) == NULL) {
+		perror("fopen");
+	}
+	else {
+		log_debug("writing %s\n", filename);
+		fwrite(data, nbytes, 1, fp);
+		fclose(fp);
+		timestamp_file(filename, timestamp);
+	}
+	free(filename);
 }
 
 static void
@@ -179,7 +169,7 @@ got_frame_callback (struct mjv_frame *f, void *data)
 	print_info(n_frames, mjv_framerate_estimate(fr));
 
 	// Write to file:
-	write_image_file((char *)mjv_frame_get_rawbits(f), mjv_frame_get_num_rawbits(f), n_frames, mjv_frame_get_timestamp(f));
+	write_image_file((char *)mjv_frame_get_rawbits(f), mjv_frame_get_num_rawbits(f), NULL, n_frames, mjv_frame_get_timestamp(f));
 
 	// We are responsible for freeing the mjv_frame when we're done with it:
 	mjv_frame_destroy(&f);

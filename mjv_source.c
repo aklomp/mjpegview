@@ -101,6 +101,17 @@ mjv_source_create_from_network (const char *const name, const char *const host, 
 {
 	struct mjv_source *s;
 
+	// Bounds check on username and password, allow max 100 chars;
+	// write_auth_string() allocates its helper strings on the stack;
+	// avoid using strlen, because the length may be enormous:
+	if (user != NULL) {
+		int i = 0;
+		while (user[i++] != '\0') if (i == 100) goto err_0;
+	}
+	if (pass != NULL) {
+		int i = 0;
+		while (pass[i++] != '\0') if (i == 100) goto err_0;
+	}
 	if (malloc_fail(s)) {
 		goto err_0;
 	}

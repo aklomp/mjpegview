@@ -300,47 +300,29 @@ static bool
 write_auth_string (struct mjv_source *s)
 {
 	bool ret = true;
-	char *header = NULL;
-	char *auth_string = NULL;
-	char *base64_auth_string = NULL;
 	size_t user_len = strlen(s->user);
 	size_t pass_len = strlen(s->pass);
+	char auth_string[user_len + pass_len + 1];
+	char base64_auth_string[((user_len + pass_len + 1) * 4) / 3 + 3];
 
 	// Caller ensures s->user and s->pass are non-NULL
 	// The auth string has the form 'username:password':
-	if ((auth_string = malloc(user_len + pass_len + 1)) == NULL) {
-		log_error(err_malloc_failed);
-		ret = false;
-		goto err;
-	}
 	memcpy(auth_string, s->user, user_len);
 	auth_string[user_len] = ':';
 	memcpy(auth_string + user_len + 1, s->pass, pass_len);
 
 	// Encode this auth string into base64:
-	if ((base64_auth_string = malloc(((user_len + pass_len + 1) * 4) / 3 + 3)) == NULL) {
-		log_error(err_malloc_failed);
-		ret = false;
-		goto err;
-	}
 	base64_encode(auth_string, user_len + pass_len + 1, base64_auth_string);
 
 	// Print auth header:
 	char header_fmt[] = "Authorization: Basic %s\r\n";
 	size_t header_len = STR_LEN(header_fmt) - 2 + strlen(base64_auth_string);
+	char header[header_len + 1];
 
-	if ((header = malloc(header_len + 1)) == NULL) {
-		log_error(err_malloc_failed);
-		ret = false;
-		goto err;
-	}
 	snprintf(header, header_len + 1, header_fmt, base64_auth_string);
 	SAFE_WRITE(header, header_len);
 
-err:	free(base64_auth_string);
-	free(auth_string);
-	free(header);
-	return ret;
+err:	return ret;
 }
 
 static void

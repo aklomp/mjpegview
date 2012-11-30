@@ -39,7 +39,6 @@ enum states {
 };
 
 enum { READ_SUCCESS, OUT_OF_BYTES, CORRUPT_HEADER, READ_ERROR };
-enum { MULTIPART_MIXED, MULTIPART_X_MIXED_REPLACE };
 
 char header_content_type_one[] = "Content-Type:";
 char header_content_type_two[] = "Content-type:";
@@ -49,7 +48,6 @@ char header_content_length_two[] = "Content-length:";
 struct mjv_grabber
 {
 	int nread;		// return value of read();
-	int mimetype;
 	enum states state;	// state machine state
 	char *boundary;
 	int delay_usec;
@@ -101,7 +99,6 @@ mjv_grabber_create (struct mjv_source *source)
 	}
 	// Set default values:
 	s->boundary = NULL;
-	s->mimetype = -1;
 	s->content_length = 0;
 	s->delay_usec = 0;
 	s->state = STATE_HTTP_BANNER;
@@ -619,11 +616,9 @@ interpret_content_type (struct mjv_grabber *s, char *line, unsigned int line_len
 
 	// Try to establish mime type:
 	if (STRING_MATCH(multipart_x_mixed_replace)) {
-		s->mimetype = MULTIPART_X_MIXED_REPLACE;
 		cur += STR_LEN(multipart_x_mixed_replace);
 	}
 	else if (STRING_MATCH(multipart_mixed)) {
-		s->mimetype = MULTIPART_MIXED;
 		cur += STR_LEN(multipart_mixed);
 	}
 	// The rest of this field is divided into subfields by semicolons.

@@ -28,7 +28,7 @@
 #define VALUE_AT(x,y)	(*((uint16_t *)(x)) == U16_BYTESWAP(y))
 
 // States in our state machine:
-enum {
+enum states {
 	STATE_HTTP_BANNER,
 	STATE_HTTP_HEADER,
 	STATE_FIND_BOUNDARY,
@@ -50,7 +50,7 @@ struct mjv_grabber
 {
 	int nread;		// return value of read();
 	int mimetype;
-	int state;		// state machine state
+	enum states state;	// state machine state
 	char *boundary;
 	int delay_usec;
 	unsigned int boundary_len;

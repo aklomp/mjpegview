@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -72,8 +73,6 @@ struct mjv_thread {
 #define BLINKER_ALPHA	0.3
 #define BLINKER_HEIGHT	8
 #define SPINNER_STEPS	12
-
-#define g_malloc_fail(s)   ((s = g_try_malloc(sizeof(*(s)))) == NULL)
 
 static void *thread_main (void *);
 static void callback_got_frame (struct mjv_frame *, void *);
@@ -168,7 +167,7 @@ mjv_thread_create (struct mjv_source *source)
 
 	struct mjv_thread *t;
 
-	if (g_malloc_fail(t)) {
+	if ((t = malloc(sizeof(*t))) == NULL) {
 		return NULL;
 	}
 	memset(t, 0, sizeof(*t));
@@ -216,7 +215,7 @@ mjv_thread_destroy (struct mjv_thread *t)
 	if (t->pixbuf != NULL) {
 		g_object_unref(t->pixbuf);
 	}
-	g_free(t);
+	free(t);
 }
 
 bool
@@ -346,7 +345,7 @@ static void
 destroy_pixels (guchar *pixels, gpointer data)
 {
 	(void)data;
-	g_free(pixels);
+	free(pixels);
 }
 
 static void

@@ -9,8 +9,9 @@ GLIB_LDFLAGS = `pkg-config --libs glib-2.0`
 
 MJPEGVIEW_PROG = mjpegview
 MJVSINGLE_PROG = mjvsingle
+MJVMULTI_PROG = mjvmulti
 
-all: $(MJPEGVIEW_PROG) $(MJVSINGLE_PROG)
+all: $(MJPEGVIEW_PROG) $(MJVSINGLE_PROG) $(MJVMULTI_PROG)
 
 # These object files do not depend on GLib or GTK+-2:
 OBJS_PLAIN = \
@@ -21,6 +22,7 @@ OBJS_PLAIN = \
   mjv_grabber.o \
   mjv_filename.o \
   mjv_framerate.o \
+  mjvmulti.o \
   mjvsingle.o
 
 # These object files depend only on GLib:
@@ -75,10 +77,26 @@ MJVSINGLE_OBJS = \
 $(MJVSINGLE_PROG): $(MJVSINGLE_OBJS)
 	$(CC) $(MJVSINGLE_LDFLAGS) $^ -o $@
 
+## mjvmulti:
+
+MJVMULTI_LDFLAGS = -ljpeg -lconfig -lpthread -lrt
+MJVMULTI_OBJS = \
+  mjvmulti.o \
+  mjv_frame.o \
+  mjv_config.o \
+  mjv_source.o \
+  mjv_grabber.o \
+  mjv_filename.o \
+  mjv_framerate.o
+
+$(MJVMULTI_PROG): $(MJVMULTI_OBJS)
+	$(CC) $(MJVMULTI_LDFLAGS) $^ -o $@
+
 clean:
 	rm -f \
 	  $(OBJS_PLAIN) \
 	  $(OBJS_GLIB) \
 	  $(OBJS_GTK) \
 	  $(MJPEGVIEW_PROG) \
-	  $(MJVSINGLE_PROG)
+	  $(MJVSINGLE_PROG) \
+	  $(MJVMULTI_PROG)

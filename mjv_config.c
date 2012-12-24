@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <glib.h>
+#include <glib-object.h>
 #include <libconfig.h>
 
 #include "mjv_log.h"
@@ -14,6 +15,9 @@
 struct mjv_config {
 	config_t *config;
 	GList *sources;
+
+	// This is a temporary variable that we will factor out later:
+	GList *iter;
 };
 
 struct mjv_config *
@@ -29,6 +33,7 @@ mjv_config_init (void)
 		return NULL;
 	}
 	c->sources = NULL;
+	c->iter = NULL;
 	config_init(c->config);
 	return c;
 }
@@ -42,6 +47,9 @@ mjv_config_destroy (struct mjv_config **const c)
 
 	for (link = g_list_first((*c)->sources); link; link = g_list_next(link)) {
 		mjv_source_destroy((struct mjv_source **)(&link->data));
+	}
+	if ((*c)->iter) {
+		g_object_unref((*c)->iter);
 	}
 	g_list_free((*c)->sources);
 	free((*c)->config);
@@ -63,7 +71,7 @@ mjv_config_read_file (struct mjv_config *const c, const char *const filename)
 	return false;
 }
 
-GList *
+bool
 mjv_config_get_sources (struct mjv_config *const c)
 {
 	unsigned int i;
@@ -71,7 +79,7 @@ mjv_config_get_sources (struct mjv_config *const c)
 	config_setting_t *sources;
 
 	if ((sources = config_lookup(c->config, "sources")) == NULL) {
-		return NULL;
+		return false;
 	}
 	len = config_setting_length(sources);
 	for (i = 0; i < len; i++) {
@@ -120,5 +128,28 @@ mjv_config_get_sources (struct mjv_config *const c)
 		}
 		c->sources = g_list_append(c->sources, mjv_source);
 	}
-	return c->sources;
+	return true;
+}
+
+struct mjv_source *
+mjv_config_source_first (struct mjv_config *c)
+{
+	if (c == NULL || c->sources == NULL) {
+		return NULL;
+	}
+	if (c->iter) {
+		g_object_unref(c->iter);
+	}
+	c->iter = g_list_first(c->sources);
+	return (c->iter) ? (struct mjv_source *)(c->iter->data) : NULL;
+}
+
+struct mjv_source *
+mjv_config_source_next (struct mjv_config *c)
+{
+	if (c == NULL || c->iter == NULL) {
+		return NULL;
+	}
+	c->iter = g_list_next(c->iter);
+	return (c->iter) ? (struct mjv_source *)(c->iter->data) : NULL;
 }

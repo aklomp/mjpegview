@@ -14,7 +14,6 @@ static const char config_file[] = "config";
 int
 main (int argc, char **argv)
 {
-	GList *sources_list = NULL;
 	struct mjv_config *config;
 
 	if ((config = mjv_config_init()) == NULL) {
@@ -26,11 +25,11 @@ main (int argc, char **argv)
 		log_error("Fatal: could not read config\n");
 		return 1;
 	}
-	if ((sources_list = mjv_config_get_sources(config)) == NULL) {
+	if (!mjv_config_get_sources(config)) {
 		log_error("Fatal: could not get config list of sources\n");
 		return 1;
 	}
-	mjv_gui_main(argc, argv, sources_list);
+	mjv_gui_main(argc, argv, config);
 
 	mjv_config_destroy(&config);
 

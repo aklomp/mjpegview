@@ -1,15 +1,14 @@
 #include <stdbool.h>
-#include <assert.h>
 #include <gtk/gtk.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 
 #include "mjv_log.h"
+#include "mjv_config.h"
 #include "mjv_frame.h"
 #include "mjv_source.h"
 #include "mjv_thread.h"
 
 // Cast a GList's data pointer to an object pointer:
-#define MJV_SOURCE(x)    ((struct mjv_source *)((x)->data))
 #define MJV_THREAD(x)    ((struct mjv_thread *)((x)->data))
 
 static void cancel_all_threads (void);
@@ -25,9 +24,10 @@ on_destroy (void)
 
 // TODO GList is overkill, use GArray or GSList something
 int
-mjv_gui_main (int argc, char **argv, GList *sources_list)
+mjv_gui_main (int argc, char **argv, struct mjv_config *config)
 {
 	GList *link = NULL;
+	struct mjv_source *s;
 
 	if (!g_thread_supported()) {
 		g_thread_init(NULL);
@@ -40,9 +40,8 @@ mjv_gui_main (int argc, char **argv, GList *sources_list)
 
 	// For each config source, create a mjv_thread object,
 	// which we can run a little bit later on:
-	for (link = g_list_first(sources_list); link; link = g_list_next(link))
+	for (s = mjv_config_source_first(config); s; s = mjv_config_source_next(config))
 	{
-		struct mjv_source *s = MJV_SOURCE(link);
 		struct mjv_thread *thread = mjv_thread_create(s);
 
 		if (thread == NULL) {

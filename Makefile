@@ -16,6 +16,7 @@ all: $(MJPEGVIEW_PROG) $(MJVSINGLE_PROG)
 OBJS_PLAIN = \
   mjv_log.o \
   mjv_frame.o \
+  mjv_config.o \
   mjv_source.o \
   mjv_grabber.o \
   mjv_filename.o \
@@ -24,7 +25,6 @@ OBJS_PLAIN = \
 
 # These object files depend only on GLib:
 OBJS_GLIB = \
-  mjv_config.o \
   mjv_framebuf.o \
   mjv_main.o
 

@@ -1,8 +1,6 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-#include <glib.h>
-#include <glib-object.h>
 #include <libconfig.h>
 
 #include "mjv_log.h"
@@ -11,13 +9,15 @@
 
 #define malloc_fail(s)   ((s = malloc(sizeof(*(s)))) == NULL)
 
+struct slist {
+	struct mjv_source *source;
+	struct slist *next;
+};
 
 struct mjv_config {
 	config_t *config;
-	GList *sources;
-
-	// This is a temporary variable that we will factor out later:
-	GList *iter;
+	struct slist *sources;		// first element of sources list
+	struct slist *iter;		// current iter pos in sources list
 };
 
 struct mjv_config *
@@ -41,17 +41,16 @@ mjv_config_init (void)
 void
 mjv_config_destroy (struct mjv_config **const c)
 {
-	GList *link = NULL;
+	struct slist *s;
+	struct slist *t;
 
 	config_destroy((*c)->config);
 
-	for (link = g_list_first((*c)->sources); link; link = g_list_next(link)) {
-		mjv_source_destroy((struct mjv_source **)(&link->data));
+	for (s = (*c)->sources; s; s = t) {
+		t = s->next;
+		mjv_source_destroy(&s->source);
+		free(s);
 	}
-	if ((*c)->iter) {
-		g_object_unref((*c)->iter);
-	}
-	g_list_free((*c)->sources);
 	free((*c)->config);
 	free(*c);
 	*c = NULL;
@@ -81,6 +80,7 @@ mjv_config_get_sources (struct mjv_config *const c)
 	if ((sources = config_lookup(c->config, "sources")) == NULL) {
 		return false;
 	}
+	c->iter = c->sources;
 	len = config_setting_length(sources);
 	for (i = 0; i < len; i++) {
 		int port = 0;
@@ -93,6 +93,7 @@ mjv_config_get_sources (struct mjv_config *const c)
 		const char *pass = NULL;
 		const char *file = NULL;
 		struct mjv_source *mjv_source;
+		struct slist *s;
 		config_setting_t *source = config_setting_get_elem(sources, i);
 
 		if (config_setting_lookup_string(source, "type", &type) == CONFIG_FALSE) {
@@ -126,7 +127,19 @@ mjv_config_get_sources (struct mjv_config *const c)
 		else {
 			continue;
 		}
-		c->sources = g_list_append(c->sources, mjv_source);
+		// Allocate new node for linked list:
+		if ((s = malloc(sizeof(*s))) == NULL) {
+			// TODO error handling
+		}
+		s->source = mjv_source;
+		s->next = NULL;
+		if (c->iter == NULL) {
+			c->sources = s;
+		}
+		else {
+			c->iter->next = s;
+		}
+		c->iter = s;
 	}
 	return true;
 }
@@ -137,11 +150,8 @@ mjv_config_source_first (struct mjv_config *c)
 	if (c == NULL || c->sources == NULL) {
 		return NULL;
 	}
-	if (c->iter) {
-		g_object_unref(c->iter);
-	}
-	c->iter = g_list_first(c->sources);
-	return (c->iter) ? (struct mjv_source *)(c->iter->data) : NULL;
+	c->iter = c->sources;
+	return (c->iter) ? c->iter->source : NULL;
 }
 
 struct mjv_source *
@@ -150,6 +160,6 @@ mjv_config_source_next (struct mjv_config *c)
 	if (c == NULL || c->iter == NULL) {
 		return NULL;
 	}
-	c->iter = g_list_next(c->iter);
-	return (c->iter) ? (struct mjv_source *)(c->iter->data) : NULL;
+	c->iter = c->iter->next;
+	return (c->iter) ? c->iter->source : NULL;
 }

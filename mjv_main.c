@@ -16,17 +16,8 @@ main (int argc, char **argv)
 {
 	struct mjv_config *config;
 
-	if ((config = mjv_config_init()) == NULL) {
-		log_error("Fatal: could not load config\n");
-		return 1;
-	}
-	if (mjv_config_read_file(config, config_file) == 0) {
-		// FIXME app should work without a config file
-		log_error("Fatal: could not read config\n");
-		return 1;
-	}
-	if (!mjv_config_get_sources(config)) {
-		log_error("Fatal: could not get config list of sources\n");
+	if ((config = mjv_config_create_from_file(config_file)) == NULL) {
+		log_error("Fatal: could not open config file\n");
 		return 1;
 	}
 	mjv_gui_main(argc, argv, config);

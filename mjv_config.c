@@ -38,6 +38,25 @@ mjv_config_init (void)
 	return c;
 }
 
+struct mjv_config *
+mjv_config_create_from_file (const char *const filename)
+{
+	struct mjv_config *c;
+
+	if ((c = mjv_config_init()) == NULL) {
+		return NULL;
+	}
+	if (!mjv_config_read_file(c, filename)) {
+		mjv_config_destroy(&c);
+		return NULL;
+	}
+	if (!mjv_config_get_sources(c)) {
+		mjv_config_destroy(&c);
+		return NULL;
+	}
+	return c;
+}
+
 void
 mjv_config_destroy (struct mjv_config **const c)
 {

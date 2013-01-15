@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
 #include <pthread.h>
 #include <time.h>
 #include <glib.h>
@@ -51,6 +53,7 @@ struct mjv_thread {
 	GdkPixbuf *pixbuf;
 	GtkWidget *frame;
 	GtkWidget *canvas;
+	int self_pipe_fd;
 	unsigned int width;
 	unsigned int height;
 	unsigned int blinker;
@@ -96,6 +99,7 @@ static GtkWidget *create_frame_statusbar (struct mjv_thread *);
 
 static char *status_string (struct mjv_thread *);
 static void update_state (struct mjv_thread *, enum state state);
+static bool make_selfpipe_pair (int *, int *);
 
 static void
 print_source_name (cairo_t *cr, const char *name)
@@ -180,6 +184,7 @@ mjv_thread_create (struct mjv_source *source)
 	t->canvas  = gtk_drawing_area_new();
 	t->state   = STATE_DISCONNECTED;
 
+	t->self_pipe_fd = -1;
 	t->spinner.step = 0;
 	t->spinner.mutex = g_mutex_new();
 
@@ -215,6 +220,9 @@ mjv_thread_destroy (struct mjv_thread *t)
 	if (t->pixbuf != NULL) {
 		g_object_unref(t->pixbuf);
 	}
+	if (t->self_pipe_fd >= 0) {
+		close(t->self_pipe_fd);
+	}
 	free(t);
 }
 
@@ -230,11 +238,21 @@ mjv_thread_run (struct mjv_thread *t)
 bool
 mjv_thread_cancel (struct mjv_thread *t)
 {
-	// Terminate a thread by sending it a cancel request, then waiting for
-	// it to join. The cancel request will be caught in mjv_grabber_run.
-	if (pthread_cancel(t->pthread) != 0) {
+	int ret;
+
+	// Terminate a thread by sending a byte of data through the write end
+	// of the self-pipe. The grabber catches this and exits gracefully:
+	if (t->self_pipe_fd < 0) {
 		return false;
 	}
+	while ((ret = write(t->self_pipe_fd, "X", 1)) == -1 && errno == EAGAIN) {
+		continue;
+	}
+	if (ret == -1) {
+		return false;
+	}
+	close(t->self_pipe_fd);
+	t->self_pipe_fd = -1;
 	if (pthread_join(t->pthread, NULL) != 0) {
 		return false;
 	}
@@ -299,13 +317,9 @@ mjv_thread_get_canvas (struct mjv_thread *t)
 static void *
 thread_main (void *user_data)
 {
-	struct mjv_thread *t = (struct mjv_thread *)user_data;
+	int read_fd;
 
-	// The thread responds to pthread_cancel requests, but only
-	// at cancellation points. We set up mjv_grabber_run's pselect()
-	// statement to be the only cancellation point that qualifies.
-	// The thread will then only cancel when waiting for IO.
-	pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
+	struct mjv_thread *t = (struct mjv_thread *)user_data;
 
 	// Try to connect:
 	update_state(t, STATE_CONNECTING);
@@ -327,15 +341,23 @@ thread_main (void *user_data)
 	// We are connected:
 	update_state(t, STATE_CONNECTED);
 	mjv_thread_hide_spinner(t);
-	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 	framerate_thread_run(t);
+
+	// Open a pipe pair to use in the self-pipe trick. When we write
+	// a byte to the pipe, the grabber knows to quit gracefully:
+	if (make_selfpipe_pair(&read_fd, &t->self_pipe_fd) == 0) {
+		goto exit;
+	}
+	mjv_grabber_set_selfpipe(t->grabber, read_fd);
 
 	// Stay in this function till it terminates;
 	// meanwhile we get frames back through callback_got_frame():
 	mjv_grabber_run(t->grabber);
 
 	// We are disconnected:
-	mjv_grabber_destroy(&t->grabber);
+	mjv_grabber_close_selfpipe(t->grabber);
+
+exit:	mjv_grabber_destroy(&t->grabber);
 	update_state(t, STATE_DISCONNECTED);
 	framerate_thread_kill(t);
 	return NULL;
@@ -661,4 +683,25 @@ update_state (struct mjv_thread *thread, enum state state)
 	gtk_label_set_text(GTK_LABEL(thread->statusbar.lbl_status), status_string(thread));
 	gtk_widget_queue_draw(thread->statusbar.lbl_status);
 	gdk_threads_leave();
+}
+
+static bool
+make_selfpipe_pair (int *read_fd, int *write_fd)
+{
+	int pfd[2];
+	int flags;
+
+	if (pipe(pfd) == -1) {
+		return false;
+	}
+	// Make nonblocking:
+	if ((flags = fcntl(pfd[0], F_GETFL)) == -1 || fcntl(pfd[0], F_SETFL, flags | O_NONBLOCK) == -1
+	 || (flags = fcntl(pfd[1], F_GETFL)) == -1 || fcntl(pfd[1], F_SETFL, flags | O_NONBLOCK) == -1) {
+		close(pfd[0]);
+		close(pfd[1]);
+		return false;
+	}
+	*read_fd = pfd[0];
+	*write_fd = pfd[1];
+	return true;
 }

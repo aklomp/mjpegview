@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <getopt.h>
+#include <signal.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -21,6 +22,8 @@
 // terms of simple interfaces and modularity.
 
 static int n_frames = 0;
+static int read_fd = -1;
+static int write_fd = -1;
 
 static bool
 copy_string (const char *const src, char **const dst)
@@ -175,6 +178,60 @@ got_frame_callback (struct mjv_frame *f, void *data)
 	mjv_frame_destroy(&f);
 }
 
+static bool
+make_selfpipe_pair (void)
+{
+	int pfd[2];
+	int flags;
+
+	if (pipe(pfd) == -1) {
+		return false;
+	}
+	// Make nonblocking:
+	if ((flags = fcntl(pfd[0], F_GETFL)) == -1 || fcntl(pfd[0], F_SETFL, flags | O_NONBLOCK) == -1
+	 || (flags = fcntl(pfd[1], F_GETFL)) == -1 || fcntl(pfd[1], F_SETFL, flags | O_NONBLOCK) == -1) {
+		close(pfd[0]);
+		close(pfd[1]);
+		return false;
+	}
+	read_fd = pfd[0];
+	write_fd = pfd[1];
+	return true;
+}
+
+static void
+sig_handler (int signum, siginfo_t *info, void *ptr)
+{
+	(void)signum;
+	(void)info;
+	(void)ptr;
+
+	// Terminate a thread by sending a byte of data through the write end
+	// of the self-pipe. The grabber catches this and exits gracefully:
+	if (write_fd < 0) {
+		return;
+	}
+	while (write(write_fd, "X", 1) == -1 && errno == EAGAIN) {
+		continue;
+	}
+	close(write_fd);
+	write_fd = -1;
+}
+
+static void
+sig_setup (void)
+{
+	struct sigaction act;
+
+	memset(&act, 0, sizeof(act));
+
+	act.sa_sigaction = sig_handler;
+	act.sa_flags = SA_SIGINFO;
+
+	sigaction(SIGTERM, &act, NULL);
+	sigaction(SIGINT, &act, NULL);
+}
+
 int
 main (int argc, char **argv)
 {
@@ -229,8 +286,19 @@ main (int argc, char **argv)
 		ret = 1;
 		goto exit;
 	}
+	// Create pipe pair to signal quit message to grabber, using the self-pipe trick:
+	if (make_selfpipe_pair() == 0) {
+		log_error("Error: could not create pipe\n");
+		ret = 1;
+		goto exit;
+	}
+	mjv_grabber_set_selfpipe(g, read_fd);
+
 	// Grabbed frames will be handled by got_frame_callback():
 	mjv_grabber_set_callback(g, got_frame_callback, fr);
+
+	// Install signal handler to trap INT and TERM:
+	sig_setup();
 
 	// Run the grabber; control stays here until the stream terminates or the user interrupts:
 	mjv_grabber_run(g);
@@ -238,7 +306,14 @@ main (int argc, char **argv)
 	log_info("Frames processed: %d\n", n_frames);
 
 exit:	mjv_framerate_destroy(&fr);
-	mjv_grabber_destroy(&g);
+	if (g) {
+		mjv_grabber_close_selfpipe(g);
+		mjv_grabber_destroy(&g);
+	}
+	if (write_fd >= 0) {
+		close(write_fd);
+		write_fd = -1;
+	}
 	mjv_source_destroy(&s);
 	free(pass);
 	free(user);

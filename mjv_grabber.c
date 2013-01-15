@@ -5,7 +5,6 @@
 #include <errno.h>
 #include <time.h>
 #include <unistd.h>
-#include <pthread.h>
 
 #include "mjv_log.h"
 #include "mjv_source.h"
@@ -51,6 +50,7 @@ struct mjv_grabber
 	enum states state;	// state machine state
 	char *boundary;
 	int delay_usec;
+	int self_pipe_fd;	// selfpipe read end (for cancellation notification)
 	unsigned int boundary_len;
 	unsigned int response_code;
 	unsigned int content_length;
@@ -105,6 +105,7 @@ mjv_grabber_create (struct mjv_source *source)
 	s->last_emitted.tv_sec = 0;
 	s->last_emitted.tv_nsec = 0;
 	s->source = source;
+	s->self_pipe_fd = -1;
 
 	s->callback = NULL;
 	s->user_pointer = NULL;
@@ -130,6 +131,7 @@ mjv_grabber_destroy (struct mjv_grabber **s)
 	log_info("Destroying source %s\n", mjv_source_get_name((*s)->source));
 	free((*s)->boundary);
 	free((*s)->buf);
+	mjv_grabber_close_selfpipe(*s);
 	free(*s);
 	*s = NULL;
 }
@@ -139,6 +141,22 @@ mjv_grabber_set_callback (struct mjv_grabber *s, void (*got_frame_callback)(stru
 {
 	s->callback = got_frame_callback;
 	s->user_pointer = user_pointer;
+}
+
+void
+mjv_grabber_set_selfpipe (struct mjv_grabber *s, int pipe_read_fd)
+{
+	s->self_pipe_fd = pipe_read_fd;
+}
+
+void
+mjv_grabber_close_selfpipe (struct mjv_grabber *s)
+{
+	if (s->self_pipe_fd < 0) {
+		return;
+	}
+	close(s->self_pipe_fd);
+	s->self_pipe_fd = -1;
 }
 
 static void
@@ -178,7 +196,7 @@ mjv_grabber_run (struct mjv_grabber *s)
 	int fd;
 	int available;
 	fd_set fdset;
-	struct timespec timeout;
+	struct timeval timeout;
 
 	// Jump table per state; order corresponds with
 	// the state enum at the top of this file:
@@ -199,32 +217,28 @@ mjv_grabber_run (struct mjv_grabber *s)
 	{
 		FD_ZERO(&fdset);
 		FD_SET(fd, &fdset);
+		if (s->self_pipe_fd >= 0) {
+			FD_SET(s->self_pipe_fd, &fdset);
+		}
 		timeout.tv_sec = 10;
-		timeout.tv_nsec = 0;
+		timeout.tv_usec = 0;
 
-		// Make this thread explicitly cancelable here:
-		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
-
-		// pselect() is a pthread cancellation point. When this thread
-		// receives a cancellation request, it will be inside here.
-		available = pselect(fd + 1, &fdset, NULL, NULL, &timeout, NULL);
-
-		// Make this thread uncancelable; once processing IO,
-		// it should be allowed to finish its job.
-		// Note: this is fine when all goes well, but not when it doesn't.
-		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
-
+		while ((available = select(((fd > s->self_pipe_fd) ? fd : s->self_pipe_fd) + 1, &fdset, NULL, NULL, &timeout)) == -1 && errno == EINTR) {
+			continue;
+		}
 		if (available == 0) {
 			// timeout reached
 			log_info("Timeout reached. Giving up.\n");
 			return MJV_GRABBER_TIMEOUT;
 		}
 		if (available < 0) {
-			if (errno == EINTR) {
-				continue;
-			}
 			log_error("%s\n", strerror(errno));
 			return MJV_GRABBER_READ_ERROR;
+		}
+		// Check if a byte entered through the end of the self-pipe;
+		// this indicates that we need to exit the loop:
+		if (s->self_pipe_fd >= 0 && FD_ISSET(s->self_pipe_fd, &fdset)) {
+			break;
 		}
 		s->nread = read(fd, s->head, BUF_SIZE - (s->head - s->buf));
 		if (s->nread < 0) {

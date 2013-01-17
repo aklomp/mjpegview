@@ -94,6 +94,7 @@ mjv_config_get_sources (struct mjv_config *const c)
 {
 	unsigned int i;
 	unsigned int len;
+	struct slist *t;
 	config_setting_t *sources;
 
 	if ((sources = config_lookup(c->config, "sources")) == NULL) {
@@ -125,8 +126,7 @@ mjv_config_get_sources (struct mjv_config *const c)
 			config_setting_lookup_string(source, "file", &file);
 
 			if ((mjv_source = mjv_source_create_from_file(name, file, usec)) == NULL) {
-				// TODO error handling
-				continue;
+				goto err;
 			}
 		}
 		else if (strcmp(type, "network") == 0)
@@ -139,8 +139,7 @@ mjv_config_get_sources (struct mjv_config *const c)
 			config_setting_lookup_string(source, "pass", &pass);
 
 			if ((mjv_source = mjv_source_create_from_network(name, host, path, user, pass, port)) == NULL) {
-				// TODO error handling
-				continue;
+				goto err;
 			}
 		}
 		else {
@@ -148,7 +147,8 @@ mjv_config_get_sources (struct mjv_config *const c)
 		}
 		// Allocate new node for linked list:
 		if ((s = malloc(sizeof(*s))) == NULL) {
-			// TODO error handling
+			mjv_source_destroy(&mjv_source);
+			goto err;
 		}
 		s->source = mjv_source;
 		s->next = NULL;
@@ -161,6 +161,14 @@ mjv_config_get_sources (struct mjv_config *const c)
 		c->iter = s;
 	}
 	return true;
+
+err:	// Destroy all sources found thus far:
+	for (c->iter = c->sources; c->iter; c->iter = t) {
+		t = c->iter->next;
+		mjv_source_destroy(&c->iter->source);
+		free(c->iter);
+	}
+	return false;
 }
 
 struct mjv_source *

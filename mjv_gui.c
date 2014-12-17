@@ -29,9 +29,6 @@ mjv_gui_main (int argc, char **argv, struct mjv_config *config)
 	GList *link = NULL;
 	struct mjv_source *s;
 
-	if (!g_thread_supported()) {
-		g_thread_init(NULL);
-	}
 	gdk_threads_init();
 	gtk_init(&argc, &argv);
 

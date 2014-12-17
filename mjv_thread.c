@@ -27,7 +27,7 @@ enum state
 // This is a private structure that describes the
 // spinner element (the "on-hold" spinning circle)
 struct spinner {
-	GMutex *mutex;
+	GMutex mutex;
 	unsigned int step;
 	unsigned int iterations;
 	struct timespec start;
@@ -49,7 +49,7 @@ struct statusbar {
 
 struct mjv_thread {
 	cairo_t   *cairo;
-	GMutex    *mutex;
+	GMutex    mutex;
 	GdkPixbuf *pixbuf;
 	GtkWidget *frame;
 	GtkWidget *canvas;
@@ -66,7 +66,7 @@ struct mjv_thread {
 	enum state state;
 
 	struct mjv_framerate *framerate;
-	GMutex *framerate_mutex;
+	GMutex framerate_mutex;
 	pthread_t framerate_pthread;
 
 	pthread_t      pthread;
@@ -138,7 +138,7 @@ canvas_repaint (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 
 	// This mutex ensures that no running thread can update the mjv_thread data
 	// object from the frame callback while we are here:
-	g_mutex_lock(t->mutex);
+	g_mutex_lock(&t->mutex);
 	t->cairo = gdk_cairo_create(widget->window);
 
 	if (t->pixbuf == NULL) {
@@ -159,7 +159,7 @@ canvas_repaint (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 		draw_blinker(t->cairo, 4, t->height - 4 - BLINKER_HEIGHT, t->blinker);
 	}
 	cairo_destroy(t->cairo);
-	g_mutex_unlock(t->mutex);
+	g_mutex_unlock(&t->mutex);
 	return TRUE;
 }
 
@@ -180,18 +180,18 @@ mjv_thread_create (struct mjv_source *source)
 	t->height  = 480;
 	t->source  = source;
 	t->grabber = NULL;
-	t->mutex   = g_mutex_new();
 	t->canvas  = gtk_drawing_area_new();
 	t->state   = STATE_DISCONNECTED;
 
 	t->self_pipe_fd = -1;
 	t->spinner.step = 0;
-	t->spinner.mutex = g_mutex_new();
 
 	t->framerate = mjv_framerate_create();		// TODO: check return code
-	t->framerate_mutex = g_mutex_new();
-
 	t->framebuf = mjv_framebuf_create(50);
+
+	g_mutex_init(&t->mutex);
+	g_mutex_init(&t->spinner.mutex);
+	g_mutex_init(&t->framerate_mutex);
 
 	pthread_attr_init(&t->pthread_attr);
 	pthread_attr_setdetachstate(&t->pthread_attr, PTHREAD_CREATE_JOINABLE);
@@ -210,9 +210,9 @@ mjv_thread_destroy (struct mjv_thread *t)
 	if (t->state == STATE_CONNECTING) {
 		mjv_thread_hide_spinner(t);
 	}
-	g_mutex_free(t->mutex);
-	g_mutex_free(t->spinner.mutex);
-	g_mutex_free(t->framerate_mutex);
+	g_mutex_clear(&t->mutex);
+	g_mutex_clear(&t->spinner.mutex);
+	g_mutex_clear(&t->framerate_mutex);
 	pthread_attr_destroy(&t->pthread_attr);
 	mjv_grabber_destroy(&t->grabber);
 	mjv_framebuf_destroy(t->framebuf);
@@ -275,11 +275,11 @@ mjv_thread_show_spinner (struct mjv_thread *t)
 	// This function spawns a new pthread that wakes every x milliseconds
 	// and requests a redraw of the frame area.
 
-	g_mutex_lock(t->spinner.mutex);
+	g_mutex_lock(&t->spinner.mutex);
 	t->spinner.iterations = 0;
 	clock_gettime(CLOCK_REALTIME, &t->spinner.start);
 	pthread_create(&t->spinner.pthread, NULL, spinner_thread_main, t);
-	g_mutex_unlock(t->spinner.mutex);
+	g_mutex_unlock(&t->spinner.mutex);
 }
 
 void
@@ -402,7 +402,7 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 	unsigned int row_stride = mjv_frame_get_row_stride(frame);
 
 	gdk_threads_enter();
-	g_mutex_lock(thread->mutex);
+	g_mutex_lock(&thread->mutex);
 
 	g_assert(width > 0);
 	g_assert(height > 0);
@@ -435,7 +435,7 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 
 	framerate_insert_datapoint(thread, mjv_frame_get_timestamp(frame));
 
-	g_mutex_unlock(thread->mutex);
+	g_mutex_unlock(&thread->mutex);
 	gdk_threads_leave();
 
 	// See if the framebuffer will take responsibility for this frame object,
@@ -522,10 +522,10 @@ spinner_thread_main (void *user_data)
 		// Get absolute time, calculated from the start time and the number
 		// of iterations, of when the next tick should be issued. Aligning
 		// the timing to an absolute clock prevents framerate drift.
-		g_mutex_lock(t->spinner.mutex);
+		g_mutex_lock(&t->spinner.mutex);
 		wake.tv_sec  = t->spinner.start.tv_sec + t->spinner.iterations / ITERS_PER_SEC;
 		wake.tv_nsec = t->spinner.start.tv_nsec + (t->spinner.iterations % ITERS_PER_SEC) * INTERVAL_NSEC;
-		g_mutex_unlock(t->spinner.mutex);
+		g_mutex_unlock(&t->spinner.mutex);
 		if (wake.tv_nsec >= 1000000000) {
 			wake.tv_sec++;
 			wake.tv_nsec -= 1000000000;
@@ -534,18 +534,18 @@ spinner_thread_main (void *user_data)
 		// already in the past, we are out of sync and rebase time to `now':
 		clock_gettime(CLOCK_REALTIME, &now);
 		if (now.tv_sec > wake.tv_sec || (now.tv_sec == wake.tv_sec && now.tv_nsec >= wake.tv_nsec)) {
-			g_mutex_lock(t->spinner.mutex);
+			g_mutex_lock(&t->spinner.mutex);
 			t->spinner.iterations = 0;
 			memcpy(&t->spinner.start, &now, sizeof(struct timespec));
-			g_mutex_unlock(t->spinner.mutex);
+			g_mutex_unlock(&t->spinner.mutex);
 		}
 		else {
 			while (clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &wake, NULL) != 0);
 		}
-		g_mutex_lock(t->spinner.mutex);
+		g_mutex_lock(&t->spinner.mutex);
 		t->spinner.step = (t->spinner.step + 1) % SPINNER_STEPS;
 		t->spinner.iterations++;
-		g_mutex_unlock(t->spinner.mutex);
+		g_mutex_unlock(&t->spinner.mutex);
 		gdk_threads_enter();
 		gtk_widget_queue_draw(t->canvas);
 		gdk_threads_leave();
@@ -581,9 +581,9 @@ framerate_thread_main (void *user_data)
 	for (;;)
 	{
 		// Get FPS value:
-		g_mutex_lock(t->framerate_mutex);
+		g_mutex_lock(&t->framerate_mutex);
 		fps = mjv_framerate_estimate(t->framerate);
-		g_mutex_unlock(t->framerate_mutex);
+		g_mutex_unlock(&t->framerate_mutex);
 
 		// Create label:
 		if (fps > 0.0) {
@@ -607,9 +607,9 @@ framerate_thread_main (void *user_data)
 static void
 framerate_insert_datapoint (struct mjv_thread *thread, const struct timespec *const ts)
 {
-	g_mutex_lock(thread->framerate_mutex);
+	g_mutex_lock(&thread->framerate_mutex);
 	mjv_framerate_insert_datapoint(thread->framerate, ts);
-	g_mutex_unlock(thread->framerate_mutex);
+	g_mutex_unlock(&thread->framerate_mutex);
 }
 
 static void

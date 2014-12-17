@@ -37,6 +37,11 @@ main ()
 		, .pat = "%n-%f.jpg"
 		, .expect = "camz-6.jpg"
 		}
+	,	{ .srcname = "camz"
+		, .framenum = 6
+		, .pat = "%n-%f-%n-%f%f.jpg%n"
+		, .expect = "camz-6-camz-66.jpgcamz"
+		}
 	};
 	for (unsigned int i = 0; i < (sizeof(cases) / sizeof(cases[0])); i++) {
 		out = mjv_filename_forge(cases[i].srcname, cases[i].framenum, cases[i].pat);

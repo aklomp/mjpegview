@@ -8,6 +8,9 @@
 #include <cairo.h>
 
 #define STEPS 12
+#define TWO_PI        6.28318530717958647692
+#define RLARGE        18.0
+#define RSMALL        3.0
 #define ITERS_PER_SEC  (STEPS)
 #define INTERVAL_NSEC  (1000000000 / ITERS_PER_SEC)
 
@@ -96,11 +99,37 @@ spinner_destroy (struct spinner **s)
 	*s = NULL;
 }
 
+static float sin[] = { 0.0, RLARGE * 0.5, RLARGE * 0.86602540378443864676, RLARGE };
+
+static inline void
+step_rgba (int n, struct spinner *s, cairo_t *cr)
+{
+	cairo_set_source_rgba(cr, 0.5, 0.5, 0.5, 0.9 - 0.06 * ((n + s->step) % STEPS));
+}
+
+static inline void
+step_paint (cairo_t *cr)
+{
+	cairo_close_path(cr);
+	cairo_fill(cr);
+}
+
 void
 spinner_repaint (struct spinner *s, cairo_t *cr, int x, int y)
 {
-	(void)s;
-	(void)cr;
-	(void)x;
-	(void)y;
+	if (s == NULL || cr == NULL) {
+		return;
+	}
+	step_rgba( 0, s, cr); cairo_arc(cr, x + sin[0], y + sin[3], RSMALL, 0, TWO_PI); step_paint(cr);
+	step_rgba( 1, s, cr); cairo_arc(cr, x + sin[1], y + sin[2], RSMALL, 0, TWO_PI); step_paint(cr);
+	step_rgba( 2, s, cr); cairo_arc(cr, x + sin[2], y + sin[1], RSMALL, 0, TWO_PI); step_paint(cr);
+	step_rgba( 3, s, cr); cairo_arc(cr, x + sin[3], y + sin[0], RSMALL, 0, TWO_PI); step_paint(cr);
+	step_rgba( 4, s, cr); cairo_arc(cr, x + sin[2], y - sin[1], RSMALL, 0, TWO_PI); step_paint(cr);
+	step_rgba( 5, s, cr); cairo_arc(cr, x + sin[1], y - sin[2], RSMALL, 0, TWO_PI); step_paint(cr);
+	step_rgba( 6, s, cr); cairo_arc(cr, x + sin[0], y - sin[3], RSMALL, 0, TWO_PI); step_paint(cr);
+	step_rgba( 7, s, cr); cairo_arc(cr, x - sin[1], y - sin[2], RSMALL, 0, TWO_PI); step_paint(cr);
+	step_rgba( 8, s, cr); cairo_arc(cr, x - sin[2], y - sin[1], RSMALL, 0, TWO_PI); step_paint(cr);
+	step_rgba( 9, s, cr); cairo_arc(cr, x - sin[3], y - sin[0], RSMALL, 0, TWO_PI); step_paint(cr);
+	step_rgba(10, s, cr); cairo_arc(cr, x - sin[2], y + sin[1], RSMALL, 0, TWO_PI); step_paint(cr);
+	step_rgba(11, s, cr); cairo_arc(cr, x - sin[1], y + sin[2], RSMALL, 0, TWO_PI); step_paint(cr);
 }

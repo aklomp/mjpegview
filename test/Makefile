@@ -18,7 +18,7 @@ test_mjv_framerate: test_mjv_framerate.c ../mjv_framerate.c
 	$(CC) $(CFLAGS) -D_GNU_SOURCE -lrt -o $@ $<
 
 test_spinner: test_spinner.c ../spinner.c
-	$(CC) $(CFLAGS) $(GTK_CFLAGS) $(GTK_LDFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) $(GTK_CFLAGS) $(GTK_LDFLAGS) -pthread -o $@ $^
 
 clean:
 	rm -f $(PROGS)

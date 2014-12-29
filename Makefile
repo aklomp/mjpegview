@@ -33,7 +33,8 @@ OBJS_GLIB = \
 # These object files depend on GLib and GTK+-2:
 OBJS_GTK = \
   mjv_gui.o \
-  mjv_thread.o
+  mjv_thread.o \
+  spinner.o
 
 $(OBJS_PLAIN): %o: %c
 	$(CC) $(CFLAGS) -c $^ -o $@
@@ -58,7 +59,8 @@ MJPEGVIEW_OBJS = \
   mjv_config.o \
   mjv_framebuf.o \
   mjv_gui.o \
-  mjv_thread.o
+  mjv_thread.o \
+  spinner.o
 
 $(MJPEGVIEW_PROG): $(MJPEGVIEW_OBJS)
 	$(CC) $(MJPEGVIEW_LDFLAGS) $(GLIB_LDFLAGS) $(GTK_LDFLAGS) $^ -o $@

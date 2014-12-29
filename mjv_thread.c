@@ -15,6 +15,7 @@
 #include "mjv_source.h"
 #include "mjv_grabber.h"
 #include "mjv_thread.h"
+#include "spinner.h"
 
 #define UNUSED_PARAM(x)		(void)(x)
 
@@ -22,17 +23,6 @@ enum state
 { STATE_DISCONNECTED
 , STATE_CONNECTING
 , STATE_CONNECTED
-};
-
-// This is a private structure that describes the
-// spinner element (the "on-hold" spinning circle)
-struct spinner {
-	GMutex mutex;
-	unsigned int step;
-	unsigned int iterations;
-	struct timespec start;
-
-	pthread_t pthread;
 };
 
 struct toolbar {
@@ -57,7 +47,7 @@ struct mjv_thread {
 	unsigned int width;
 	unsigned int height;
 	unsigned int blinker;
-	struct spinner spinner;
+	struct spinner *spinner;
 	struct mjv_source *source;
 	struct mjv_grabber *grabber;
 	struct mjv_framebuf *framebuf;
@@ -75,14 +65,11 @@ struct mjv_thread {
 
 #define BLINKER_ALPHA	0.3
 #define BLINKER_HEIGHT	8
-#define SPINNER_STEPS	12
 
 static void *thread_main (void *);
 static void callback_got_frame (struct mjv_frame *, void *);
 static void destroy_pixels (guchar *, gpointer);
 static void draw_blinker (cairo_t *, int, int, int);
-static void draw_spinner (cairo_t *, int, int, int);
-static void *spinner_thread_main (void *);
 
 static void framerate_thread_run (struct mjv_thread *);
 static void framerate_thread_kill (struct mjv_thread *);
@@ -153,7 +140,7 @@ canvas_repaint (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 		print_source_name(t->cairo, source_name);
 	}
 	if (t->state == STATE_CONNECTING) {
-		draw_spinner(t->cairo, widget->allocation.width / 2, widget->allocation.height / 2, t->spinner.step);
+		spinner_repaint(t->spinner, t->cairo, widget->allocation.width / 2, widget->allocation.height / 2);
 	}
 	else if (t->state == STATE_CONNECTED) {
 		draw_blinker(t->cairo, 4, t->height - 4 - BLINKER_HEIGHT, t->blinker);
@@ -182,15 +169,14 @@ mjv_thread_create (struct mjv_source *source)
 	t->grabber = NULL;
 	t->canvas  = gtk_drawing_area_new();
 	t->state   = STATE_DISCONNECTED;
+	t->spinner = NULL;
 
 	t->self_pipe_fd = -1;
-	t->spinner.step = 0;
 
 	t->framerate = mjv_framerate_create();		// TODO: check return code
 	t->framebuf = mjv_framebuf_create(50);
 
 	g_mutex_init(&t->mutex);
-	g_mutex_init(&t->spinner.mutex);
 	g_mutex_init(&t->framerate_mutex);
 
 	pthread_attr_init(&t->pthread_attr);
@@ -207,11 +193,8 @@ mjv_thread_destroy (struct mjv_thread *t)
 {
 	g_assert(t != NULL);
 
-	if (t->state == STATE_CONNECTING) {
-		mjv_thread_hide_spinner(t);
-	}
+	spinner_destroy(&t->spinner);
 	g_mutex_clear(&t->mutex);
-	g_mutex_clear(&t->spinner.mutex);
 	g_mutex_clear(&t->framerate_mutex);
 	pthread_attr_destroy(&t->pthread_attr);
 	mjv_grabber_destroy(&t->grabber);
@@ -267,32 +250,6 @@ mjv_thread_create_area (struct mjv_thread *t)
 	return t->frame;
 }
 
-void
-mjv_thread_show_spinner (struct mjv_thread *t)
-{
-	g_assert(t != NULL);
-
-	// This function spawns a new pthread that wakes every x milliseconds
-	// and requests a redraw of the frame area.
-
-	g_mutex_lock(&t->spinner.mutex);
-	t->spinner.iterations = 0;
-	clock_gettime(CLOCK_REALTIME, &t->spinner.start);
-	pthread_create(&t->spinner.pthread, NULL, spinner_thread_main, t);
-	g_mutex_unlock(&t->spinner.mutex);
-}
-
-void
-mjv_thread_hide_spinner (struct mjv_thread *t)
-{
-	g_assert(t != NULL);
-
-	if (pthread_cancel(t->spinner.pthread) != 0) {
-		return;
-	}
-	gtk_widget_queue_draw(t->canvas);
-}
-
 unsigned int
 mjv_thread_get_height (struct mjv_thread *t)
 {
@@ -314,6 +271,14 @@ mjv_thread_get_canvas (struct mjv_thread *t)
 	return t->canvas;
 }
 
+static void
+on_spinner_tick (void *userdata)
+{
+	gdk_threads_enter();
+	gtk_widget_queue_draw(GTK_WIDGET(userdata));
+	gdk_threads_leave();
+}
+
 static void *
 thread_main (void *user_data)
 {
@@ -322,17 +287,17 @@ thread_main (void *user_data)
 	struct mjv_thread *t = (struct mjv_thread *)user_data;
 
 	// Try to connect:
+	t->spinner = spinner_create(on_spinner_tick, t->canvas);
 	update_state(t, STATE_CONNECTING);
-	mjv_thread_show_spinner(t);
 
 	// Open source file descriptor:
 	if (mjv_source_open(t->source) == 0) {
-		mjv_thread_hide_spinner(t);
+		spinner_destroy(&t->spinner);
 		update_state(t, STATE_DISCONNECTED);
 		return NULL;
 	}
 	if ((t->grabber = mjv_grabber_create(t->source)) == NULL) {
-		mjv_thread_hide_spinner(t);
+		spinner_destroy(&t->spinner);
 		update_state(t, STATE_DISCONNECTED);
 		return NULL;
 	}
@@ -340,7 +305,7 @@ thread_main (void *user_data)
 
 	// We are connected:
 	update_state(t, STATE_CONNECTED);
-	mjv_thread_hide_spinner(t);
+	spinner_destroy(&t->spinner);
 	framerate_thread_run(t);
 
 	// Open a pipe pair to use in the self-pipe trick. When we write
@@ -389,8 +354,6 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 
 	g_assert(frame != NULL);
 	g_assert(thread != NULL);
-
-	mjv_thread_hide_spinner(thread);
 
 	// Convert from JPEG to pixbuf:
 	if ((pixels = mjv_frame_to_pixbuf(frame)) == NULL) {
@@ -471,89 +434,6 @@ draw_blinker (cairo_t *cr, int x, int y, int toggle)
 	cairo_fill(cr);
 
 #undef RIB
-}
-
-static void
-draw_spinner (cairo_t *cr, int x, int y, int step)
-{
-#define TWO_PI        6.28318530717958647692
-#define RLARGE        18.0
-#define RSMALL        3.0
-#define STEP_RGBA(n)  cairo_set_source_rgba(cr, 0.5, 0.5, 0.5, 0.9 - 0.06 * ((n + step) % SPINNER_STEPS))
-#define STEP_PAINT    cairo_close_path(cr); cairo_fill(cr)
-
-	static float sin[] = { 0.0, RLARGE * 0.5, RLARGE * 0.86602540378443864676, RLARGE };
-
-	STEP_RGBA( 0); cairo_arc(cr, x + sin[0], y + sin[3], RSMALL, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA( 1); cairo_arc(cr, x + sin[1], y + sin[2], RSMALL, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA( 2); cairo_arc(cr, x + sin[2], y + sin[1], RSMALL, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA( 3); cairo_arc(cr, x + sin[3], y + sin[0], RSMALL, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA( 4); cairo_arc(cr, x + sin[2], y - sin[1], RSMALL, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA( 5); cairo_arc(cr, x + sin[1], y - sin[2], RSMALL, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA( 6); cairo_arc(cr, x + sin[0], y - sin[3], RSMALL, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA( 7); cairo_arc(cr, x - sin[1], y - sin[2], RSMALL, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA( 8); cairo_arc(cr, x - sin[2], y - sin[1], RSMALL, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA( 9); cairo_arc(cr, x - sin[3], y - sin[0], RSMALL, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA(10); cairo_arc(cr, x - sin[2], y + sin[1], RSMALL, 0, TWO_PI); STEP_PAINT;
-	STEP_RGBA(11); cairo_arc(cr, x - sin[1], y + sin[2], RSMALL, 0, TWO_PI); STEP_PAINT;
-
-#undef STEP_PAINT
-#undef STEP_RGBA
-#undef RSMALL
-#undef RLARGE
-#undef TWO_PI
-}
-
-static void *
-spinner_thread_main (void *user_data)
-{
-	struct timespec now;
-	struct timespec wake;
-	struct mjv_thread *t = (struct mjv_thread *)user_data;
-
-#define ITERS_PER_SEC  (SPINNER_STEPS)
-#define INTERVAL_NSEC  (1000000000 / ITERS_PER_SEC)
-
-	// This function runs the spinner thread.
-	// Every interval, update spinner step and request
-	// a redraw of the canvas. Continue till canceled.
-	for (;;)
-	{
-		// Get absolute time, calculated from the start time and the number
-		// of iterations, of when the next tick should be issued. Aligning
-		// the timing to an absolute clock prevents framerate drift.
-		g_mutex_lock(&t->spinner.mutex);
-		wake.tv_sec  = t->spinner.start.tv_sec + t->spinner.iterations / ITERS_PER_SEC;
-		wake.tv_nsec = t->spinner.start.tv_nsec + (t->spinner.iterations % ITERS_PER_SEC) * INTERVAL_NSEC;
-		g_mutex_unlock(&t->spinner.mutex);
-		if (wake.tv_nsec >= 1000000000) {
-			wake.tv_sec++;
-			wake.tv_nsec -= 1000000000;
-		}
-		// `wake' holds the time that we should wake up at. If this time is
-		// already in the past, we are out of sync and rebase time to `now':
-		clock_gettime(CLOCK_REALTIME, &now);
-		if (now.tv_sec > wake.tv_sec || (now.tv_sec == wake.tv_sec && now.tv_nsec >= wake.tv_nsec)) {
-			g_mutex_lock(&t->spinner.mutex);
-			t->spinner.iterations = 0;
-			memcpy(&t->spinner.start, &now, sizeof(struct timespec));
-			g_mutex_unlock(&t->spinner.mutex);
-		}
-		else {
-			while (clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &wake, NULL) != 0);
-		}
-		g_mutex_lock(&t->spinner.mutex);
-		t->spinner.step = (t->spinner.step + 1) % SPINNER_STEPS;
-		t->spinner.iterations++;
-		g_mutex_unlock(&t->spinner.mutex);
-		gdk_threads_enter();
-		gtk_widget_queue_draw(t->canvas);
-		gdk_threads_leave();
-	}
-	return NULL;
-
-#undef INTERVAL_USEC
-#undef ITERS_PER_SEC
 }
 
 static void

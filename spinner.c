@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <pthread.h>
 #include <time.h>
 #include <cairo.h>
@@ -20,9 +21,16 @@ struct spinner
 	void *userdata;
 	unsigned int step;
 	unsigned int iters;
+	unsigned int quit;
 	struct timespec start;
 	pthread_t pthread;
 };
+
+static void
+sighandler (int sig)
+{
+	(void)sig;
+}
 
 static void *
 thread_main (void *userdata)
@@ -33,7 +41,14 @@ thread_main (void *userdata)
 	// This function runs the spinner thread.
 	// Every interval, update spinner step and issue a tick callback.
 	// Continue till canceled.
-	for (;;)
+
+	// Handle SIGUSR1 (our quit signal) with a stub function:
+	struct sigaction sa;
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = sighandler;
+	sigaction(SIGUSR1, &sa, NULL);
+
+	while (!s->quit)
 	{
 		// Get absolute time, calculated from the start time and the number
 		// of iterations, of when the next tick should be issued. Aligning
@@ -52,7 +67,12 @@ thread_main (void *userdata)
 			memcpy(&s->start, &now, sizeof(struct timespec));
 		}
 		else {
-			while (clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &wake, NULL) != 0);
+			// Do not restart on EINTR, allow sleep to be interrupted:
+			clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &wake, NULL);
+		}
+		// Check flag in case sleep was interrupted by spinner_destroy():
+		if (s->quit) {
+			break;
 		}
 		// Issue a tick callback:
 		s->on_tick(s->userdata);
@@ -73,6 +93,7 @@ spinner_create (void (*on_tick)(void *), void *userdata)
 		return NULL;
 	}
 	s->step = 0;
+	s->quit = 0;
 	s->iters = 0;
 	s->start.tv_sec = 0;
 	s->start.tv_nsec = 0;
@@ -93,8 +114,14 @@ spinner_destroy (struct spinner **s)
 	if (s == NULL || *s == NULL) {
 		return;
 	}
-	// Destroy spinner pthread:
-	pthread_cancel((*s)->pthread);
+	// Tell thread that it's time to quit:
+	(*s)->quit = 1;
+
+	// Signal spinner thread to quit:
+	pthread_kill((*s)->pthread, SIGUSR1);
+
+	// Wait for thread to exit:
+	pthread_join((*s)->pthread, NULL);
 	free(*s);
 	*s = NULL;
 }

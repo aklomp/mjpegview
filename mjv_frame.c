@@ -1,11 +1,8 @@
 #include <stdlib.h>	// malloc()
 #include <time.h>	// clock_gettime()
-#include <errno.h>
 #include <stdio.h>
 #include <string.h>	// memcpy()
 #include <jpeglib.h>
-#include <assert.h>
-#include <jerror.h>
 #include <setjmp.h>
 
 struct mjv_frame {
@@ -17,15 +14,12 @@ struct mjv_frame {
 	unsigned int height;
 	unsigned int row_stride;
 	unsigned int components;
-	unsigned int successfully_decoded;
 };
 
 struct my_jpeg_error_mgr {
 	struct jpeg_error_mgr pub;
 	jmp_buf setjmp_buffer;
 };
-
-#define malloc_fail(s)   ((s = malloc(sizeof(*(s)))) == NULL)
 
 struct mjv_frame *
 mjv_frame_create (const char *const rawbits, const unsigned int num_rawbits)
@@ -38,7 +32,7 @@ mjv_frame_create (const char *const rawbits, const unsigned int num_rawbits)
 		timestamp.tv_sec = timestamp.tv_nsec = 0;
 	}
 	// Allocate structure:
-	if (malloc_fail(f)) {
+	if ((f = malloc(sizeof(*f))) == NULL) {
 		goto err;
 	}
 	f->error = NULL;
@@ -46,7 +40,7 @@ mjv_frame_create (const char *const rawbits, const unsigned int num_rawbits)
 	f->rawbits = NULL;
 
 	// Allocate timestamp struct:
-	if (malloc_fail(f->timestamp)) {
+	if ((f->timestamp = malloc(sizeof(*f->timestamp))) == NULL) {
 		goto err;
 	}
 	// Allocate space for the frame:
@@ -63,7 +57,6 @@ mjv_frame_create (const char *const rawbits, const unsigned int num_rawbits)
 	f->num_rawbits = num_rawbits;
 	f->width = 0;
 	f->height = 0;
-	f->successfully_decoded = 0;
 	return f;
 
 err:	if (f != NULL) {
@@ -123,7 +116,6 @@ mjv_frame_to_pixbuf (struct mjv_frame *f)
 			memcpy(f->error = c, jpeg_errmsg, len);
 		}
 		jpeg_destroy_decompress(&cinfo);
-		f->successfully_decoded = 0;
 		return NULL;
 	}
 	jpeg_create_decompress(&cinfo);
@@ -154,7 +146,6 @@ mjv_frame_to_pixbuf (struct mjv_frame *f)
 	}
 	jpeg_finish_decompress(&cinfo);
 	jpeg_destroy_decompress(&cinfo);
-	f->successfully_decoded = 1;
 	return pixbuf;
 }
 

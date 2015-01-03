@@ -2,14 +2,16 @@ CFLAGS += -std=c99 -O2 -Wall -Wextra -Werror
 GTK_CFLAGS   = `pkg-config --cflags gtk+-2.0`
 GTK_LDFLAGS  = `pkg-config --libs gtk+-2.0`
 
-.PHONY: all clean
+.PHONY: test clean
 
 PROGS = \
   test_mjv_filename \
   test_mjv_framerate \
   test_spinner
 
-all: $(PROGS)
+test: clean test_mjv_filename test_mjv_framerate
+	./test_mjv_filename
+	./test_mjv_framerate
 
 test_mjv_filename: test_mjv_filename.c ../mjv_filename.c
 	$(CC) $(CFLAGS) -o $@ $<

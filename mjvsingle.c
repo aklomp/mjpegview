@@ -37,8 +37,19 @@ copy_string (const char *const src, char **const dst)
 	return true;
 }
 
+struct cmdopts {
+	char *name;
+	char *filename;
+	char *host;
+	char *path;
+	char *user;
+	char *pass;
+	int port;
+	int usec;
+};
+
 static bool
-process_cmdline (int argc, char **argv, char **name, char **filename, int *usec, char **host, char **path, char **user, char **pass, int *port)
+process_cmdline (int argc, char **argv, struct cmdopts *opts)
 {
 	int c;
 	int option_index = 0;
@@ -63,14 +74,14 @@ process_cmdline (int argc, char **argv, char **name, char **filename, int *usec,
 		{
 			case 'd': log_debug_on(); break;
 			case 'h': break;
-			case 'm': *usec = atoi(optarg); break;
-			case 'q': *port = atoi(optarg); break;
-			case 'f': if (copy_string(optarg, filename)) break; return false;
-			case 'H': if (copy_string(optarg, host)) break; return false;
-			case 'n': if (copy_string(optarg, name)) break; return false;
-			case 'u': if (copy_string(optarg, user)) break; return false;
-			case 'p': if (copy_string(optarg, pass)) break; return false;
-			case 'P': if (copy_string(optarg, path)) break; return false;
+			case 'm': opts->usec = atoi(optarg); break;
+			case 'q': opts->port = atoi(optarg); break;
+			case 'f': if (copy_string(optarg, &opts->filename)) break; return false;
+			case 'H': if (copy_string(optarg, &opts->host)) break; return false;
+			case 'n': if (copy_string(optarg, &opts->name)) break; return false;
+			case 'u': if (copy_string(optarg, &opts->user)) break; return false;
+			case 'p': if (copy_string(optarg, &opts->pass)) break; return false;
+			case 'P': if (copy_string(optarg, &opts->path)) break; return false;
 		}
 	}
 	return true;
@@ -236,31 +247,34 @@ int
 main (int argc, char **argv)
 {
 	int ret = 0;
-	char *filename = NULL;
-	char *name = NULL;
-	char *host = NULL;
-	char *path = NULL;
-	char *user = NULL;
-	char *pass = NULL;
-	int port = 0;
-	int usec = 100;
 	struct mjv_source *s = NULL;
 	struct mjv_grabber *g = NULL;
 	struct mjv_framerate *fr = NULL;
 
-	if (!process_cmdline(argc, argv, &name, &filename, &usec, &host, &path, &user, &pass, &port)) {
+	struct cmdopts opts =
+		{ .name = NULL
+		, .filename = NULL
+		, .host = NULL
+		, .path = NULL
+		, .user = NULL
+		, .pass = NULL
+		, .port = 0
+		, .usec = 100
+		} ;
+
+	if (!process_cmdline(argc, argv, &opts)) {
 		ret = 1;
 		goto exit;
 	}
-	if (filename != NULL) {
-		if ((s = mjv_source_create_from_file(name, filename, usec)) == NULL) {
+	if (opts.filename != NULL) {
+		if ((s = mjv_source_create_from_file(opts.name, opts.filename, opts.usec)) == NULL) {
 			log_error("Error: could not create source from file\n");
 			ret = 1;
 			goto exit;
 		}
 	}
-	else if (host != NULL) {
-		if ((s = mjv_source_create_from_network(name, host, path, user, pass, port)) == NULL) {
+	else if (opts.host != NULL) {
+		if ((s = mjv_source_create_from_network(opts.name, opts.host, opts.path, opts.user, opts.pass, opts.port)) == NULL) {
 			log_error("Error: could not create source from network\n");
 			ret = 1;
 			goto exit;
@@ -315,11 +329,11 @@ exit:	mjv_framerate_destroy(&fr);
 		write_fd = -1;
 	}
 	mjv_source_destroy(&s);
-	free(pass);
-	free(user);
-	free(path);
-	free(host);
-	free(name);
-	free(filename);
+	free(opts.pass);
+	free(opts.user);
+	free(opts.path);
+	free(opts.host);
+	free(opts.name);
+	free(opts.filename);
 	return ret;
 }

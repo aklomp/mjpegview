@@ -51,16 +51,20 @@ mjv_filename_forge (const char *const srcname, unsigned int framenum, char *cons
 		       if (*(c + 1) == 'n') n_n++;
 		}
 	}
-	// Find expansion size of frame number:
+	// Find expansion length of frame number;
+	// add the length to the buffer for each mention,
+	// subtract two characters for the '%f' placeholder:
 	if (n_f > 0) {
 		size_t framenum_len = framenum_expanded_len(framenum);
-		buflen += ((int)framenum_len - 2) * n_f;
+		buflen += framenum_len * n_f;
+		buflen -= 2 * n_f;
 		itoa(framenum, fnum, framenum_len);
 	}
 	// Find expansion size of source name:
 	if (n_n > 0) {
 		size_t srcname_len = strlen(name = (char *)srcname);
-		buflen += (srcname_len - 2) * n_n;
+		buflen += srcname_len * n_n;
+		buflen -= 2 * n_n;
 	}
 	// Allocate buffer:
 	if ((buf = malloc(buflen + 1)) == NULL) {

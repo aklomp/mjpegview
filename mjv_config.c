@@ -5,9 +5,6 @@
 
 #include "mjv_log.h"
 #include "mjv_source.h"
-#include "mjv_config.h"
-
-#define malloc_fail(s)   ((s = malloc(sizeof(*(s)))) == NULL)
 
 struct slist {
 	struct mjv_source *source;
@@ -25,35 +22,16 @@ mjv_config_init (void)
 {
 	struct mjv_config *c;
 
-	if (malloc_fail(c)) {
+	if ((c = malloc(sizeof(*c))) == NULL) {
 		return NULL;
 	}
-	if (malloc_fail(c->config)) {
+	if ((c->config = malloc(sizeof(*c->config))) == NULL) {
 		free(c);
 		return NULL;
 	}
 	c->sources = NULL;
 	c->iter = NULL;
 	config_init(c->config);
-	return c;
-}
-
-struct mjv_config *
-mjv_config_create_from_file (const char *const filename)
-{
-	struct mjv_config *c;
-
-	if ((c = mjv_config_init()) == NULL) {
-		return NULL;
-	}
-	if (!mjv_config_read_file(c, filename)) {
-		mjv_config_destroy(&c);
-		return NULL;
-	}
-	if (!mjv_config_get_sources(c)) {
-		mjv_config_destroy(&c);
-		return NULL;
-	}
 	return c;
 }
 
@@ -73,20 +51,6 @@ mjv_config_destroy (struct mjv_config **const c)
 	free((*c)->config);
 	free(*c);
 	*c = NULL;
-}
-
-bool
-mjv_config_read_file (struct mjv_config *const c, const char *const filename)
-{
-	if (config_read_file(c->config, filename) != CONFIG_FALSE) {
-		return true;
-	}
-	log_error("%s: %d: %s\n",
-		config_error_file(c->config),
-		config_error_line(c->config),
-		config_error_text(c->config)
-	);
-	return false;
 }
 
 bool
@@ -169,6 +133,39 @@ err:	// Destroy all sources found thus far:
 		free(c->iter);
 	}
 	return false;
+}
+
+bool
+mjv_config_read_file (struct mjv_config *const c, const char *const filename)
+{
+	if (config_read_file(c->config, filename) != CONFIG_FALSE) {
+		return true;
+	}
+	log_error("%s: %d: %s\n",
+		config_error_file(c->config),
+		config_error_line(c->config),
+		config_error_text(c->config)
+	);
+	return false;
+}
+
+struct mjv_config *
+mjv_config_create_from_file (const char *const filename)
+{
+	struct mjv_config *c;
+
+	if ((c = mjv_config_init()) == NULL) {
+		return NULL;
+	}
+	if (!mjv_config_read_file(c, filename)) {
+		mjv_config_destroy(&c);
+		return NULL;
+	}
+	if (!mjv_config_get_sources(c)) {
+		mjv_config_destroy(&c);
+		return NULL;
+	}
+	return c;
 }
 
 struct mjv_source *

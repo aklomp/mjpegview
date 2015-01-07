@@ -9,15 +9,15 @@
 #include "mjv_frame.h"
 
 struct mjv_framebuf {
-	guint used;
-	guint capacity;
+	unsigned int used;
+	unsigned int capacity;
 	GList *frames;
 };
 
 #define MJV_FRAME(x)	((struct mjv_frame *)((x)->data))
 
 struct mjv_framebuf *
-mjv_framebuf_create (guint capacity)
+mjv_framebuf_create (unsigned int capacity)
 {
 	struct mjv_framebuf *framebuf;
 
@@ -118,21 +118,21 @@ mjv_framebuf_status_string (const struct mjv_framebuf *const f)
 	char buf[100];
 
 	if (days > 0) {
-		return (snprintf(buf, sizeof(buf), "%d/%d, %dd %dh %dm %ds", f->used, f->capacity, days, hours, minutes, seconds) > 0)
+		return (snprintf(buf, sizeof(buf), "%u/%u, %dd %dh %dm %ds", f->used, f->capacity, days, hours, minutes, seconds) > 0)
 			? strndup(buf, sizeof(buf))
 			: NULL;
 	}
 	if (hours > 0) {
-		return (snprintf(buf, sizeof(buf), "%d/%d, %dh %dm %ds", f->used, f->capacity, hours, minutes, seconds) > 0)
+		return (snprintf(buf, sizeof(buf), "%u/%u, %dh %dm %ds", f->used, f->capacity, hours, minutes, seconds) > 0)
 			? strndup(buf, sizeof(buf))
 			: NULL;
 	}
 	if (minutes > 0) {
-		return (snprintf(buf, sizeof(buf), "%d/%d, %dm %ds", f->used, f->capacity, minutes, seconds) > 0)
+		return (snprintf(buf, sizeof(buf), "%u/%u, %dm %ds", f->used, f->capacity, minutes, seconds) > 0)
 			? strndup(buf, sizeof(buf))
 			: NULL;
 	}
-	return (snprintf(buf, sizeof(buf), "%d/%d, %ds", f->used, f->capacity, seconds) > 0)
+	return (snprintf(buf, sizeof(buf), "%u/%u, %ds", f->used, f->capacity, seconds) > 0)
 		? strndup(buf, sizeof(buf))
 		: NULL;
 }

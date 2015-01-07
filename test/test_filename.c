@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#include "../mjv_filename.c"
+#include "../filename.c"
 
 struct testcase {
 	char *srcname;
@@ -44,7 +44,7 @@ main ()
 		}
 	};
 	for (unsigned int i = 0; i < (sizeof(cases) / sizeof(cases[0])); i++) {
-		out = mjv_filename_forge(cases[i].srcname, cases[i].framenum, cases[i].pat);
+		out = filename_forge(cases[i].srcname, cases[i].framenum, cases[i].pat);
 		if (out == NULL) {
 			printf("FAIL: out is NULL\n");
 			ret = 1;

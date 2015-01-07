@@ -32,7 +32,7 @@ itoa (unsigned int n, char *buf, size_t known_length)
 }
 
 char *
-mjv_filename_forge (const char *const srcname, unsigned int framenum, char *const pat)
+filename_forge (const char *const srcname, unsigned int framenum, char *const pat)
 {
 	char *c, *p, *buf;
 	char *name = NULL;

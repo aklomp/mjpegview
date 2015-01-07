@@ -13,7 +13,7 @@
 #include "mjv_frame.h"
 #include "mjv_source.h"
 #include "mjv_framerate.h"
-#include "mjv_filename.h"
+#include "filename.h"
 #include "mjv_grabber.h"
 
 // This is a really simple framegrabber for mjpeg streams. It is intended to
@@ -154,7 +154,7 @@ write_image_file (char *data, size_t nbytes, char *const srcname, unsigned int f
 		return;
 	}
 	// TODO: let user specify the pattern:
-	if ((filename = mjv_filename_forge(srcname, framenum, "%f.jpg")) == NULL) {
+	if ((filename = filename_forge(srcname, framenum, "%f.jpg")) == NULL) {
 		log_error("Error: could not forge filename\n");
 		return;
 	}

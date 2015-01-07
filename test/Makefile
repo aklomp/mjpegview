@@ -5,15 +5,15 @@ GTK_LDFLAGS  = `pkg-config --libs gtk+-2.0`
 .PHONY: test clean
 
 PROGS = \
-  test_mjv_filename \
+  test_filename \
   test_mjv_framerate \
   test_spinner
 
-test: clean test_mjv_filename test_mjv_framerate
-	./test_mjv_filename
+test: clean test_filename test_mjv_framerate
+	./test_filename
 	./test_mjv_framerate
 
-test_mjv_filename: test_mjv_filename.c ../mjv_filename.c
+test_filename: test_filename.c ../filename.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 test_mjv_framerate: test_mjv_framerate.c ../mjv_framerate.c

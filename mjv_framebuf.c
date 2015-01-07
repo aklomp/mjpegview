@@ -1,5 +1,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #include <glib.h>
 #include <glib/gprintf.h>
 
@@ -70,7 +72,7 @@ mjv_framebuf_append (struct mjv_framebuf *framebuf, struct mjv_frame *frame)
 	return true;
 }
 
-GString *
+char *
 mjv_framebuf_status_string (const struct mjv_framebuf *const f)
 {
 	// Returns a pointer to a string containing status information about
@@ -82,17 +84,16 @@ mjv_framebuf_status_string (const struct mjv_framebuf *const f)
 	int minutes = 0;
 	GList *newest;
 	GList *oldest;
-	GString *s = g_string_new("");
 
 	if (f == NULL) {
-		return s;
+		return NULL;
 	}
 	// FIXME: this is all not very efficient.
 	if ((oldest = g_list_first(f->frames)) == NULL) {
-		return s;
+		return NULL;
 	}
 	if ((newest = g_list_last(f->frames)) == NULL) {
-		return s;
+		return NULL;
 	}
 	struct timespec ts_oldest = *mjv_frame_get_timestamp(MJV_FRAME(oldest));
 	struct timespec ts_newest = *mjv_frame_get_timestamp(MJV_FRAME(newest));
@@ -112,18 +113,26 @@ mjv_framebuf_status_string (const struct mjv_framebuf *const f)
 		days = hours / 24;
 		hours %= 24;
 	}
-	// GString s is expanded to contain the result:
+	// This buffer should be large enough to contain any string formatted below;
+	// we only format integers, which are at most 10 characters or so.
+	char buf[100];
+
 	if (days > 0) {
-		g_string_printf(s, "%d/%d, %dd %dh %dm %ds", f->used, f->capacity, days, hours, minutes, seconds);
+		return (snprintf(buf, sizeof(buf), "%d/%d, %dd %dh %dm %ds", f->used, f->capacity, days, hours, minutes, seconds) > 0)
+			? strndup(buf, sizeof(buf))
+			: NULL;
 	}
-	else if (hours > 0) {
-		g_string_printf(s, "%d/%d, %dh %dm %ds", f->used, f->capacity, hours, minutes, seconds);
+	if (hours > 0) {
+		return (snprintf(buf, sizeof(buf), "%d/%d, %dh %dm %ds", f->used, f->capacity, hours, minutes, seconds) > 0)
+			? strndup(buf, sizeof(buf))
+			: NULL;
 	}
-	else if (minutes > 0) {
-		g_string_printf(s, "%d/%d, %dm %ds", f->used, f->capacity, minutes, seconds);
+	if (minutes > 0) {
+		return (snprintf(buf, sizeof(buf), "%d/%d, %dm %ds", f->used, f->capacity, minutes, seconds) > 0)
+			? strndup(buf, sizeof(buf))
+			: NULL;
 	}
-	else {
-		g_string_printf(s, "%d/%d, %ds", f->used, f->capacity, seconds);
-	}
-	return s;
+	return (snprintf(buf, sizeof(buf), "%d/%d, %ds", f->used, f->capacity, seconds) > 0)
+		? strndup(buf, sizeof(buf))
+		: NULL;
 }

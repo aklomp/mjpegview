@@ -338,12 +338,12 @@ destroy_pixels (guchar *pixels, gpointer data)
 static void
 update_framebuf_label (struct mjv_thread *thread)
 {
-	GString *s = mjv_framebuf_status_string(thread->framebuf);
+	char *s = mjv_framebuf_status_string(thread->framebuf);
 	gdk_threads_enter();
-	gtk_label_set_text(GTK_LABEL(thread->statusbar.lbl_framebuf), s->str);
+	gtk_label_set_text(GTK_LABEL(thread->statusbar.lbl_framebuf), s);
 	gtk_widget_queue_draw(thread->statusbar.lbl_framebuf);
 	gdk_threads_leave();
-	g_string_free(s, TRUE);
+	free(s);
 }
 
 static void

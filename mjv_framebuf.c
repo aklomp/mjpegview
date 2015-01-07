@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <stdlib.h>
 #include <glib.h>
 #include <glib/gprintf.h>
 
@@ -11,8 +12,6 @@ struct mjv_framebuf {
 	GList *frames;
 };
 
-#define g_malloc_fail(s)	((s = g_try_malloc(sizeof(*(s)))) == NULL)
-
 #define MJV_FRAME(x)	((struct mjv_frame *)((x)->data))
 
 struct mjv_framebuf *
@@ -20,7 +19,7 @@ mjv_framebuf_create (guint capacity)
 {
 	struct mjv_framebuf *framebuf;
 
-	if (g_malloc_fail(framebuf)) {
+	if ((framebuf = malloc(sizeof(*framebuf))) == NULL) {
 		return NULL;
 	}
 	framebuf->used = 0;
@@ -34,8 +33,9 @@ mjv_framebuf_destroy (struct mjv_framebuf *framebuf)
 {
 	GList *link;
 
-	g_assert(framebuf != NULL);
-
+	if (framebuf == NULL) {
+		return;
+	}
 	log_debug("Destroying framebuf with %u members (capacity %u)\n", g_list_length(framebuf->frames), framebuf->capacity);
 
 	// Loop over the list, destroy all frames:
@@ -44,7 +44,7 @@ mjv_framebuf_destroy (struct mjv_framebuf *framebuf)
 	}
 	// Destroy list itself:
 	g_list_free(framebuf->frames);
-	g_free(framebuf);
+	free(framebuf);
 }
 
 bool

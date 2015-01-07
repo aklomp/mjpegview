@@ -28,7 +28,7 @@ OBJS_PLAIN = \
 # These object files depend only on GLib:
 OBJS_GLIB = \
   mjv_framebuf.o \
-  mjv_main.o
+  mjpegview.o
 
 # These object files depend on GLib and GTK+-2:
 OBJS_GTK = \
@@ -55,7 +55,7 @@ MJPEGVIEW_OBJS = \
   mjv_grabber.o \
   filename.o \
   mjv_framerate.o \
-  mjv_main.o \
+  mjpegview.o \
   mjv_config.o \
   mjv_framebuf.o \
   mjv_gui.o \

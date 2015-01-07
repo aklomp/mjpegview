@@ -1,15 +1,15 @@
 #include <stdbool.h>
 #include <glib.h>
 #include <glib/gprintf.h>
+
 #include "mjv_log.h"
 #include "mjv_source.h"
 #include "mjv_config.h"
 #include "mjv_frame.h"
 #include "mjv_gui.h"
 
-#define MJV_SOURCE(x)  ((struct mjv_source *)((x)->data))
-
-static const char config_file[] = "config";
+// TODO: make this configurable:
+static char *config_file = "config";
 
 int
 main (int argc, char **argv)

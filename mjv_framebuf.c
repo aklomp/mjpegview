@@ -1,7 +1,11 @@
+// Unlock `struct timespec` and strndup():
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "mjv_log.h"
 #include "mjv_frame.h"

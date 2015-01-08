@@ -2,73 +2,73 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <glib.h>
-#include <glib/gprintf.h>
 
 #include "mjv_log.h"
 #include "mjv_frame.h"
 
 struct mjv_framebuf {
+	struct mjv_frame **frames;
+	struct mjv_frame **next;
 	unsigned int used;
-	unsigned int capacity;
-	GList *frames;
+	unsigned int size;
 };
 
-#define MJV_FRAME(x)	((struct mjv_frame *)((x)->data))
-
 struct mjv_framebuf *
-mjv_framebuf_create (unsigned int capacity)
+mjv_framebuf_create (unsigned int size)
 {
 	struct mjv_framebuf *fb;
 
 	if ((fb = malloc(sizeof(*fb))) == NULL) {
 		return NULL;
 	}
+	// Allocate a pointer array to hold references to the frames:
+	if ((fb->frames = calloc(size, sizeof(*fb->frames))) == NULL) {
+		free(fb);
+		return NULL;
+	}
 	fb->used = 0;
-	fb->capacity = capacity;
-	fb->frames = NULL;
+	fb->size = size;
+	fb->next = fb->frames;
 	return fb;
 }
 
 void
 mjv_framebuf_destroy (struct mjv_framebuf *fb)
 {
-	GList *link;
-
 	if (fb == NULL) {
 		return;
 	}
-	log_debug("Destroying framebuf with %u members (capacity %u)\n", g_list_length(fb->frames), fb->capacity);
+	log_debug("Destroying framebuf with %u members (capacity %u)\n", fb->used, fb->size);
 
-	// Loop over the list, destroy all frames:
-	for (link = g_list_first(fb->frames); link; link = g_list_next(link)) {
-		mjv_frame_destroy((struct mjv_frame **)(&link->data));
+	// Loop over the frame array, free every entry:
+	for (struct mjv_frame **f = fb->frames; f < fb->frames + fb->size; f++) {
+		mjv_frame_destroy(f);
 	}
-	// Destroy list itself:
-	g_list_free(fb->frames);
+	free(fb->frames);
 	free(fb);
 }
 
 bool
 mjv_framebuf_append (struct mjv_framebuf *fb, struct mjv_frame *frame)
 {
-	GList *first;
-
 	if (fb == NULL) {
 		return false;
 	}
 	// If this frame will push the framebuf over capacity,
-	// delete the first frame:
-	if (fb->used == fb->capacity) {
-		first = g_list_first(fb->frames);
-		mjv_frame_destroy((struct mjv_frame **)(&first->data));
-		fb->frames = g_list_delete_link(fb->frames, first);
+	// delete the oldest frame (which is about to be overwritten):
+	if (fb->used == fb->size) {
+		mjv_frame_destroy(fb->next);
 	}
 	else {
 		fb->used++;
 	}
-	// Append new node:
-	fb->frames = g_list_append(fb->frames, frame);
+	// Append new node, increment 'next' pointer:
+	*fb->next++ = frame;
+
+	// Handle wraparound at end of array:
+	if (fb->next == fb->frames + fb->size) {
+		fb->next = fb->frames;
+	}
 	return true;
 }
 
@@ -82,21 +82,32 @@ mjv_framebuf_status_string (const struct mjv_framebuf *const fb)
 	int days = 0;
 	int hours = 0;
 	int minutes = 0;
-	GList *newest;
-	GList *oldest;
+	struct mjv_frame **newest;
+	struct mjv_frame **oldest;
 
 	if (fb == NULL) {
 		return NULL;
 	}
-	// FIXME: this is all not very efficient.
-	if ((oldest = g_list_first(fb->frames)) == NULL) {
+	// If framebuf is not at capacity, oldest frame is #0; otherwise it's
+	// the frame at 'next' that will be overwritten by the next frame:
+	oldest = (fb->used < fb->size)
+		? fb->frames
+		: fb->next;
+
+	// The newest frame is the frame before 'next', if we have at least one
+	// frame:
+	newest = fb->next;
+	if (fb->used > 0) {
+		if (newest == fb->frames) {
+			newest += fb->size;
+		}
+		newest--;
+	}
+	if (*oldest == NULL || *newest == NULL) {
 		return NULL;
 	}
-	if ((newest = g_list_last(fb->frames)) == NULL) {
-		return NULL;
-	}
-	struct timespec ts_oldest = *mjv_frame_get_timestamp(MJV_FRAME(oldest));
-	struct timespec ts_newest = *mjv_frame_get_timestamp(MJV_FRAME(newest));
+	struct timespec ts_oldest = *mjv_frame_get_timestamp(*oldest);
+	struct timespec ts_newest = *mjv_frame_get_timestamp(*newest);
 
 	// Find time difference between oldest and newest frames:
 	int seconds = ts_newest.tv_sec - ts_oldest.tv_sec;
@@ -118,21 +129,21 @@ mjv_framebuf_status_string (const struct mjv_framebuf *const fb)
 	char buf[100];
 
 	if (days > 0) {
-		return (snprintf(buf, sizeof(buf), "%u/%u, %dd %dh %dm %ds", fb->used, fb->capacity, days, hours, minutes, seconds) > 0)
+		return (snprintf(buf, sizeof(buf), "%u/%u, %dd %dh %dm %ds", fb->used, fb->size, days, hours, minutes, seconds) > 0)
 			? strndup(buf, sizeof(buf))
 			: NULL;
 	}
 	if (hours > 0) {
-		return (snprintf(buf, sizeof(buf), "%u/%u, %dh %dm %ds", fb->used, fb->capacity, hours, minutes, seconds) > 0)
+		return (snprintf(buf, sizeof(buf), "%u/%u, %dh %dm %ds", fb->used, fb->size, hours, minutes, seconds) > 0)
 			? strndup(buf, sizeof(buf))
 			: NULL;
 	}
 	if (minutes > 0) {
-		return (snprintf(buf, sizeof(buf), "%u/%u, %dm %ds", fb->used, fb->capacity, minutes, seconds) > 0)
+		return (snprintf(buf, sizeof(buf), "%u/%u, %dm %ds", fb->used, fb->size, minutes, seconds) > 0)
 			? strndup(buf, sizeof(buf))
 			: NULL;
 	}
-	return (snprintf(buf, sizeof(buf), "%u/%u, %ds", fb->used, fb->capacity, seconds) > 0)
+	return (snprintf(buf, sizeof(buf), "%u/%u, %ds", fb->used, fb->size, seconds) > 0)
 		? strndup(buf, sizeof(buf))
 		: NULL;
 }

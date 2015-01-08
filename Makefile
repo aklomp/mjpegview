@@ -21,13 +21,13 @@ OBJS_PLAIN = \
   mjv_source.o \
   mjv_grabber.o \
   filename.o \
+  mjv_framebuf.o \
   mjv_framerate.o \
   mjvmulti.o \
   mjvsingle.o
 
 # These object files depend only on GLib:
 OBJS_GLIB = \
-  mjv_framebuf.o \
   mjpegview.o
 
 # These object files depend on GLib and GTK+-2:

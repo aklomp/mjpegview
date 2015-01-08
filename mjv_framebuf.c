@@ -76,6 +76,30 @@ mjv_framebuf_append (struct mjv_framebuf *fb, struct mjv_frame *frame)
 	return true;
 }
 
+static inline struct mjv_frame **
+oldest (const struct mjv_framebuf *const fb)
+{
+	// If framebuf is not at capacity, oldest frame is #0; otherwise it's
+	// the frame at 'next' that will be overwritten by the next frame:
+	return (fb->used < fb->size)
+		? fb->frames
+		: fb->next;
+}
+
+static inline struct mjv_frame **
+newest (const struct mjv_framebuf *const fb)
+{
+	// The newest frame is the frame before 'next', if we have at least one:
+	struct mjv_frame **newest = fb->next;
+	if (fb->used > 0) {
+		if (newest == fb->frames) {
+			newest += fb->size;
+		}
+		newest--;
+	}
+	return newest;
+}
+
 char *
 mjv_framebuf_status_string (const struct mjv_framebuf *const fb)
 {
@@ -86,32 +110,18 @@ mjv_framebuf_status_string (const struct mjv_framebuf *const fb)
 	int days = 0;
 	int hours = 0;
 	int minutes = 0;
-	struct mjv_frame **newest;
-	struct mjv_frame **oldest;
 
 	if (fb == NULL) {
 		return NULL;
 	}
-	// If framebuf is not at capacity, oldest frame is #0; otherwise it's
-	// the frame at 'next' that will be overwritten by the next frame:
-	oldest = (fb->used < fb->size)
-		? fb->frames
-		: fb->next;
+	struct mjv_frame **old = oldest(fb);
+	struct mjv_frame **new = newest(fb);
 
-	// The newest frame is the frame before 'next', if we have at least one
-	// frame:
-	newest = fb->next;
-	if (fb->used > 0) {
-		if (newest == fb->frames) {
-			newest += fb->size;
-		}
-		newest--;
-	}
-	if (*oldest == NULL || *newest == NULL) {
+	if (*old == NULL || *new == NULL) {
 		return NULL;
 	}
-	struct timespec ts_oldest = *mjv_frame_get_timestamp(*oldest);
-	struct timespec ts_newest = *mjv_frame_get_timestamp(*newest);
+	struct timespec ts_oldest = *mjv_frame_get_timestamp(*old);
+	struct timespec ts_newest = *mjv_frame_get_timestamp(*new);
 
 	// Find time difference between oldest and newest frames:
 	int seconds = ts_newest.tv_sec - ts_oldest.tv_sec;

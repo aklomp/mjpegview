@@ -8,6 +8,7 @@ PROGS = \
   test_filename \
   test_framebuf \
   test_mjv_framerate \
+  test_ringbuf \
   test_spinner
 
 test: clean test_filename test_framebuf test_mjv_framerate
@@ -23,6 +24,9 @@ test_framebuf: test_framebuf.c ../framebuf.c
 
 test_mjv_framerate: test_mjv_framerate.c ../mjv_framerate.c
 	$(CC) $(CFLAGS) -D_GNU_SOURCE -lrt -o $@ $<
+
+test_ringbuf: test_ringbuf.c ../ringbuf.c
+	$(CC) $(CFLAGS) -o $@ $<
 
 test_spinner: test_spinner.c ../spinner.c
 	$(CC) $(CFLAGS) $(GTK_CFLAGS) $(GTK_LDFLAGS) -pthread -o $@ $^

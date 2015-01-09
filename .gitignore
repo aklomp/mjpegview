@@ -5,3 +5,4 @@ mjvmulti
 test/test_filename
 test/test_framebuf
 test/test_mjv_framerate
+test/test_ringbuf

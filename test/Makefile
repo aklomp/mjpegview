@@ -6,20 +6,16 @@ GTK_LDFLAGS  = `pkg-config --libs gtk+-2.0`
 
 PROGS = \
   test_filename \
-  test_framebuf \
   test_mjv_framerate \
   test_ringbuf \
   test_spinner
 
-test: clean test_filename test_framebuf test_mjv_framerate
+test: clean test_filename test_mjv_framerate test_ringbuf
 	./test_filename
-	./test_framebuf
 	./test_mjv_framerate
+	./test_ringbuf
 
 test_filename: test_filename.c ../filename.c
-	$(CC) $(CFLAGS) -o $@ $<
-
-test_framebuf: test_framebuf.c ../framebuf.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 test_mjv_framerate: test_mjv_framerate.c ../mjv_framerate.c

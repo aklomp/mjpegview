@@ -10,7 +10,7 @@
 #include <gtk/gtk.h>
 
 #include "mjv_frame.h"
-#include "mjv_framebuf.h"
+#include "framebuf.h"
 #include "mjv_framerate.h"
 #include "mjv_source.h"
 #include "mjv_grabber.h"
@@ -50,7 +50,7 @@ struct mjv_thread {
 	struct spinner *spinner;
 	struct mjv_source *source;
 	struct mjv_grabber *grabber;
-	struct mjv_framebuf *framebuf;
+	struct framebuf *framebuf;
 	struct toolbar toolbar;
 	struct statusbar statusbar;
 	enum state state;
@@ -174,7 +174,7 @@ mjv_thread_create (struct mjv_source *source)
 	t->self_pipe_fd = -1;
 
 	t->framerate = mjv_framerate_create();		// TODO: check return code
-	t->framebuf = mjv_framebuf_create(50);
+	t->framebuf = framebuf_create(50);
 
 	g_mutex_init(&t->mutex);
 	g_mutex_init(&t->framerate_mutex);
@@ -198,7 +198,7 @@ mjv_thread_destroy (struct mjv_thread *t)
 	g_mutex_clear(&t->framerate_mutex);
 	pthread_attr_destroy(&t->pthread_attr);
 	mjv_grabber_destroy(&t->grabber);
-	mjv_framebuf_destroy(t->framebuf);
+	framebuf_destroy(t->framebuf);
 	mjv_framerate_destroy(&t->framerate);
 	if (t->pixbuf != NULL) {
 		g_object_unref(t->pixbuf);
@@ -338,7 +338,7 @@ destroy_pixels (guchar *pixels, gpointer data)
 static void
 update_framebuf_label (struct mjv_thread *thread)
 {
-	char *s = mjv_framebuf_status_string(thread->framebuf);
+	char *s = framebuf_status_string(thread->framebuf);
 	gdk_threads_enter();
 	gtk_label_set_text(GTK_LABEL(thread->statusbar.lbl_framebuf), s);
 	gtk_widget_queue_draw(thread->statusbar.lbl_framebuf);
@@ -403,7 +403,7 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 
 	// See if the framebuffer will take responsibility for this frame object,
 	// else the responsibility for it ends with us, so we destroy it:
-	if (mjv_framebuf_append(thread->framebuf, frame)) {
+	if (framebuf_append(thread->framebuf, frame)) {
 		update_framebuf_label(thread);
 	}
 	else {

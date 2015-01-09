@@ -21,7 +21,7 @@ OBJS_PLAIN = \
   mjv_source.o \
   mjv_grabber.o \
   filename.o \
-  mjv_framebuf.o \
+  framebuf.o \
   mjv_framerate.o \
   mjvmulti.o \
   mjvsingle.o
@@ -57,7 +57,7 @@ MJPEGVIEW_OBJS = \
   mjv_framerate.o \
   mjpegview.o \
   mjv_config.o \
-  mjv_framebuf.o \
+  framebuf.o \
   mjv_gui.o \
   mjv_thread.o \
   spinner.o

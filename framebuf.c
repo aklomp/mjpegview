@@ -10,17 +10,17 @@
 #include "mjv_log.h"
 #include "mjv_frame.h"
 
-struct mjv_framebuf {
+struct framebuf {
 	struct mjv_frame **frames;
 	struct mjv_frame **next;
 	unsigned int used;
 	unsigned int size;
 };
 
-struct mjv_framebuf *
-mjv_framebuf_create (unsigned int size)
+struct framebuf *
+framebuf_create (unsigned int size)
 {
-	struct mjv_framebuf *fb;
+	struct framebuf *fb;
 
 	if ((fb = malloc(sizeof(*fb))) == NULL) {
 		return NULL;
@@ -37,7 +37,7 @@ mjv_framebuf_create (unsigned int size)
 }
 
 void
-mjv_framebuf_destroy (struct mjv_framebuf *fb)
+framebuf_destroy (struct framebuf *fb)
 {
 	if (fb == NULL) {
 		return;
@@ -53,7 +53,7 @@ mjv_framebuf_destroy (struct mjv_framebuf *fb)
 }
 
 bool
-mjv_framebuf_append (struct mjv_framebuf *fb, struct mjv_frame *frame)
+framebuf_append (struct framebuf *fb, struct mjv_frame *frame)
 {
 	if (fb == NULL) {
 		return false;
@@ -77,7 +77,7 @@ mjv_framebuf_append (struct mjv_framebuf *fb, struct mjv_frame *frame)
 }
 
 static inline struct mjv_frame **
-oldest (const struct mjv_framebuf *const fb)
+oldest (const struct framebuf *const fb)
 {
 	// If framebuf is not at capacity, oldest frame is #0; otherwise it's
 	// the frame at 'next' that will be overwritten by the next frame:
@@ -87,7 +87,7 @@ oldest (const struct mjv_framebuf *const fb)
 }
 
 static inline struct mjv_frame **
-newest (const struct mjv_framebuf *const fb)
+newest (const struct framebuf *const fb)
 {
 	// The newest frame is the frame before 'next', if we have at least one:
 	struct mjv_frame **newest = fb->next;
@@ -101,7 +101,7 @@ newest (const struct mjv_framebuf *const fb)
 }
 
 char *
-mjv_framebuf_status_string (const struct mjv_framebuf *const fb)
+framebuf_status_string (const struct framebuf *const fb)
 {
 	// Returns a pointer to a string containing status information about
 	// this framebuffer object. Caller is responsible for g_free()'ing the

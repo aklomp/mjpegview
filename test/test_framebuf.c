@@ -1,4 +1,4 @@
-#include "../mjv_framebuf.c"
+#include "../framebuf.c"
 
 // Stub functions:
 void
@@ -25,29 +25,29 @@ log_debug (const char *const fmt, ...)
 static int
 test_create ()
 {
-	struct mjv_framebuf *fb;
+	struct framebuf *fb;
 
 	// Create the framebuf:
-	if ((fb = mjv_framebuf_create(10)) == NULL) {
+	if ((fb = framebuf_create(10)) == NULL) {
 		return 1;
 	}
 	// Destroy the framebuf:
-	mjv_framebuf_destroy(fb);
+	framebuf_destroy(fb);
 	return 0;
 }
 
 static int
 test_insert_single ()
 {
-	struct mjv_framebuf *fb;
+	struct framebuf *fb;
 	struct mjv_frame *data = (struct mjv_frame *)"hello";
 
 	// Create the framebuf:
-	if ((fb = mjv_framebuf_create(10)) == NULL) {
+	if ((fb = framebuf_create(10)) == NULL) {
 		return 1;
 	}
 	// Add a single element:
-	mjv_framebuf_append(fb, (struct mjv_frame *)data);
+	framebuf_append(fb, (struct mjv_frame *)data);
 
 	// Check that the oldest element is our data pointer:
 	if (*oldest(fb) != data) {
@@ -69,7 +69,7 @@ test_insert_single ()
 		return 1;
 	}
 	// Destroy the framebuf:
-	mjv_framebuf_destroy(fb);
+	framebuf_destroy(fb);
 	return 0;
 }
 
@@ -79,7 +79,7 @@ test_oldest ()
 	struct mjv_frame *frames[4];
 
 	// Create static object:
-	struct mjv_framebuf fb =
+	struct framebuf fb =
 		{ .frames = frames
 		, .next = frames
 		, .size = 4

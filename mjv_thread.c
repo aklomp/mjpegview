@@ -401,14 +401,8 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 	g_mutex_unlock(&thread->mutex);
 	gdk_threads_leave();
 
-	// See if the framebuffer will take responsibility for this frame object,
-	// else the responsibility for it ends with us, so we destroy it:
-	if (framebuf_append(thread->framebuf, frame)) {
-		update_framebuf_label(thread);
-	}
-	else {
-		mjv_frame_destroy(&frame);
-	}
+	framebuf_append(thread->framebuf, frame);
+	update_framebuf_label(thread);
 }
 
 static void

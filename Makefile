@@ -24,7 +24,8 @@ OBJS_PLAIN = \
   framebuf.o \
   mjv_framerate.o \
   mjvmulti.o \
-  mjvsingle.o
+  mjvsingle.o \
+  ringbuf.o
 
 # These object files depend only on GLib:
 OBJS_GLIB = \
@@ -60,6 +61,7 @@ MJPEGVIEW_OBJS = \
   framebuf.o \
   mjv_gui.o \
   mjv_thread.o \
+  ringbuf.o \
   spinner.o
 
 $(MJPEGVIEW_PROG): $(MJPEGVIEW_OBJS)

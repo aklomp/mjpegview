@@ -76,7 +76,8 @@ MJVSINGLE_OBJS = \
   mjv_source.o \
   mjv_grabber.o \
   filename.o \
-  mjv_framerate.o
+  mjv_framerate.o \
+  ringbuf.o
 
 $(MJVSINGLE_PROG): $(MJVSINGLE_OBJS)
 	$(CC) $(MJVSINGLE_LDFLAGS) $^ -o $@
@@ -91,7 +92,8 @@ MJVMULTI_OBJS = \
   mjv_source.o \
   mjv_grabber.o \
   filename.o \
-  mjv_framerate.o
+  mjv_framerate.o \
+  ringbuf.o
 
 $(MJVMULTI_PROG): $(MJVMULTI_OBJS)
 	$(CC) $(MJVMULTI_LDFLAGS) $^ -o $@

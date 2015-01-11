@@ -1,13 +1,13 @@
 #include <stdlib.h>
-#include <string.h>
 #include <time.h>
+
+#include "ringbuf.h"
 
 #define FRAMERATE_MEMORY  15
 
 struct mjv_framerate
 {
-	int num;
-	struct timespec mem[FRAMERATE_MEMORY];
+	struct ringbuf *rb;
 };
 
 struct mjv_framerate *
@@ -18,7 +18,10 @@ mjv_framerate_create (void)
 	if ((f = malloc(sizeof(*f))) == NULL) {
 		return NULL;
 	}
-	f->num = 0;
+	if ((f->rb = ringbuf_create(FRAMERATE_MEMORY, sizeof(struct timespec), NULL)) == NULL) {
+		free(f);
+		return NULL;
+	}
 	return f;
 }
 
@@ -28,6 +31,7 @@ mjv_framerate_destroy (struct mjv_framerate **f)
 	if (f == NULL || *f == NULL) {
 		return;
 	}
+	ringbuf_destroy(&(*f)->rb);
 	free(*f);
 	*f = NULL;
 }
@@ -35,16 +39,7 @@ mjv_framerate_destroy (struct mjv_framerate **f)
 void
 mjv_framerate_insert_datapoint (struct mjv_framerate *f, const struct timespec *const ts)
 {
-	// Shift existing timestamps one over:
-	memmove(&f->mem[1], &f->mem[0], sizeof(struct timespec) * (FRAMERATE_MEMORY - 1));
-
-	// Add new value at start:
-	memcpy(&f->mem[0], ts, sizeof(*ts));
-
-	// Adjust total number of timestamps in history buffer:
-	if (f->num < FRAMERATE_MEMORY) {
-		f->num++;
-	}
+	ringbuf_append(f->rb, (void *)ts);
 }
 
 static float
@@ -53,20 +48,6 @@ timespec_diff (struct timespec *new, struct timespec *old)
 	time_t diff_sec = new->tv_sec - old->tv_sec;
 	long diff_nsec = new->tv_nsec - old->tv_nsec;
 	return diff_sec + ((float)diff_nsec / 1000000000.0);
-}
-
-static inline struct timespec *
-newest (struct mjv_framerate *f)
-{
-	// Pointer to newest timestamp:
-	return &f->mem[0];
-}
-
-static inline struct timespec *
-oldest (struct mjv_framerate *f)
-{
-	// Pointer to oldest timestamp:
-	return &f->mem[f->num - 1];
 }
 
 float
@@ -79,25 +60,25 @@ mjv_framerate_estimate (struct mjv_framerate *f)
 	// apparent stall condition.
 
 	// Not enough data for comparison?
-	if (f == NULL || f->num <= 1) {
+	if (f == NULL || ringbuf_used(f->rb) <= 1) {
 		return -1.0;
 	}
 	// Compare oldest and newest values:
-	float diff_among_frames = timespec_diff(newest(f), oldest(f));
+	float diff_among_frames = timespec_diff(ringbuf_newest(f->rb), ringbuf_oldest(f->rb));
 
 	// Get the wall time:
 	if (clock_gettime(CLOCK_REALTIME, &now) != 0) {
-		return (f->num - 1) / diff_among_frames;
+		return (ringbuf_used(f->rb) - 1) / diff_among_frames;
 	}
 	// Calculate the difference between the last seen frame
 	// and the wall time:
-	float diff_with_now = timespec_diff(&now, newest(f));
+	float diff_with_now = timespec_diff(&now, ringbuf_newest(f->rb));
 
 	// If this difference is smaller than the average FPS of
 	// the frames among themselves, return the diff among frames:
-	// If we have 5 frames, we have 4 intervals; hence f->num - 1
+	// If we have 5 frames, we have 4 intervals; hence ringbuf_used - 1
 	if (diff_with_now < diff_among_frames) {
-		return (f->num - 1) / diff_among_frames;
+		return (ringbuf_used(f->rb) - 1) / diff_among_frames;
 	}
 	// Else there has been a large time gap between the last received
 	// frame and the now (the connection has lagged). If this is less
@@ -106,6 +87,6 @@ mjv_framerate_estimate (struct mjv_framerate *f)
 	if (diff_with_now > diff_among_frames * 5.0) {
 		return -1.0;
 	}
-	diff_with_now = timespec_diff(&now, oldest(f));
-	return f->num / diff_with_now;
+	diff_with_now = timespec_diff(&now, ringbuf_oldest(f->rb));
+	return ringbuf_used(f->rb) / diff_with_now;
 }

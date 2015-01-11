@@ -5,15 +5,15 @@
 
 #define FRAMERATE_MEMORY  15
 
-struct mjv_framerate
+struct framerate
 {
 	struct ringbuf *rb;
 };
 
-struct mjv_framerate *
-mjv_framerate_create (void)
+struct framerate *
+framerate_create (void)
 {
-	struct mjv_framerate *f;
+	struct framerate *f;
 
 	if ((f = malloc(sizeof(*f))) == NULL) {
 		return NULL;
@@ -26,7 +26,7 @@ mjv_framerate_create (void)
 }
 
 void
-mjv_framerate_destroy (struct mjv_framerate **f)
+framerate_destroy (struct framerate **f)
 {
 	if (f == NULL || *f == NULL) {
 		return;
@@ -37,7 +37,7 @@ mjv_framerate_destroy (struct mjv_framerate **f)
 }
 
 void
-mjv_framerate_insert_datapoint (struct mjv_framerate *f, const struct timespec *const ts)
+framerate_insert_datapoint (struct framerate *f, const struct timespec *const ts)
 {
 	ringbuf_append(f->rb, (void *)ts);
 }
@@ -51,7 +51,7 @@ timespec_diff (struct timespec *new, struct timespec *old)
 }
 
 float
-mjv_framerate_estimate (struct mjv_framerate *f)
+framerate_estimate (struct framerate *f)
 {
 	struct timespec now;
 

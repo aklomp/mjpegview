@@ -14,8 +14,8 @@
 #include "mjv_log.c"
 #include "mjv_frame.h"
 #include "mjv_source.h"
-#include "mjv_framerate.h"
 #include "filename.h"
+#include "framerate.h"
 #include "mjv_grabber.h"
 
 // This is a really simple framegrabber for mjpeg streams. It is intended to
@@ -26,7 +26,7 @@
 struct thread {
 	struct mjv_source *s;
 	struct mjv_grabber *g;
-	struct mjv_framerate *fr;
+	struct framerate *fr;
 	int n_frames;
 	int read_fd;
 	int write_fd;
@@ -108,7 +108,7 @@ thread_destroy (struct thread **t)
 	if ((*t)->write_fd >= 0) {
 		close((*t)->write_fd);
 	}
-	mjv_framerate_destroy(&(*t)->fr);
+	framerate_destroy(&(*t)->fr);
 	mjv_grabber_destroy(&(*t)->g);
 	free(*t);
 	*t = NULL;
@@ -154,7 +154,7 @@ thread_create (struct mjv_source *s)
 	}
 	mjv_grabber_set_selfpipe(t->g, t->read_fd);
 
-	if ((t->fr = mjv_framerate_create()) == NULL) {
+	if ((t->fr = framerate_create()) == NULL) {
 		goto err;
 	}
 	return t;
@@ -216,7 +216,7 @@ got_frame_callback (struct mjv_frame *f, void *data)
 	t->n_frames++;
 
 	// Feed the framerate estimator, get estimate:
-	mjv_framerate_insert_datapoint(t->fr, mjv_frame_get_timestamp(f));
+	framerate_insert_datapoint(t->fr, mjv_frame_get_timestamp(f));
 
 	// Write to file:
 	write_image_file((char *)mjv_frame_get_rawbits(f), mjv_frame_get_num_rawbits(f), mjv_source_get_name(t->s), t->n_frames, mjv_frame_get_timestamp(f));

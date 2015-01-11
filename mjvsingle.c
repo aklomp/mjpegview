@@ -12,8 +12,8 @@
 #include "mjv_log.c"
 #include "mjv_frame.h"
 #include "mjv_source.h"
-#include "mjv_framerate.h"
 #include "filename.h"
+#include "framerate.h"
 #include "mjv_grabber.h"
 
 // This is a really simple framegrabber for mjpeg streams. It is intended to
@@ -173,14 +173,14 @@ write_image_file (char *data, size_t nbytes, char *const srcname, unsigned int f
 static void
 got_frame_callback (struct mjv_frame *f, void *data)
 {
-	struct mjv_framerate *fr = data;
+	struct framerate *fr = data;
 
 	n_frames++;
 	log_debug("got frame %d\n", n_frames);
 
 	// Feed the framerate estimator, get estimate:
-	mjv_framerate_insert_datapoint(fr, mjv_frame_get_timestamp(f));
-	print_info(n_frames, mjv_framerate_estimate(fr));
+	framerate_insert_datapoint(fr, mjv_frame_get_timestamp(f));
+	print_info(n_frames, framerate_estimate(fr));
 
 	// Write to file:
 	write_image_file((char *)mjv_frame_get_rawbits(f), mjv_frame_get_num_rawbits(f), NULL, n_frames, mjv_frame_get_timestamp(f));
@@ -249,7 +249,7 @@ main (int argc, char **argv)
 	int ret = 0;
 	struct mjv_source *s = NULL;
 	struct mjv_grabber *g = NULL;
-	struct mjv_framerate *fr = NULL;
+	struct framerate *fr = NULL;
 
 	struct cmdopts opts =
 		{ .name = NULL
@@ -290,7 +290,7 @@ main (int argc, char **argv)
 		ret = 1;
 		goto exit;
 	}
-	if ((fr = mjv_framerate_create()) == NULL) {
+	if ((fr = framerate_create()) == NULL) {
 		log_error("Error: could not create framerate estimator\n");
 		ret = 1;
 		goto exit;
@@ -319,7 +319,7 @@ main (int argc, char **argv)
 
 	log_info("Frames processed: %d\n", n_frames);
 
-exit:	mjv_framerate_destroy(&fr);
+exit:	framerate_destroy(&fr);
 	if (g) {
 		mjv_grabber_close_selfpipe(g);
 		mjv_grabber_destroy(&g);

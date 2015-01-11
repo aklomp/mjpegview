@@ -3,5 +3,5 @@ mjpegview
 mjvsingle
 mjvmulti
 test/test_filename
-test/test_mjv_framerate
+test/test_framerate
 test/test_ringbuf

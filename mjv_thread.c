@@ -11,7 +11,7 @@
 
 #include "mjv_frame.h"
 #include "framebuf.h"
-#include "mjv_framerate.h"
+#include "framerate.h"
 #include "mjv_source.h"
 #include "mjv_grabber.h"
 #include "mjv_thread.h"
@@ -55,7 +55,7 @@ struct mjv_thread {
 	struct statusbar statusbar;
 	enum state state;
 
-	struct mjv_framerate *framerate;
+	struct framerate *framerate;
 	GMutex framerate_mutex;
 	pthread_t framerate_pthread;
 
@@ -74,7 +74,6 @@ static void draw_blinker (cairo_t *, int, int, int);
 static void framerate_thread_run (struct mjv_thread *);
 static void framerate_thread_kill (struct mjv_thread *);
 static void *framerate_thread_main (void *);
-static void framerate_insert_datapoint (struct mjv_thread *, const struct timespec *const);
 
 static void create_frame (struct mjv_thread *);
 static void create_frame_toolbar (struct mjv_thread *);
@@ -173,7 +172,7 @@ mjv_thread_create (struct mjv_source *source)
 
 	t->self_pipe_fd = -1;
 
-	t->framerate = mjv_framerate_create();		// TODO: check return code
+	t->framerate = framerate_create();		// TODO: check return code
 	t->framebuf = framebuf_create(50);
 
 	g_mutex_init(&t->mutex);
@@ -199,7 +198,7 @@ mjv_thread_destroy (struct mjv_thread *t)
 	pthread_attr_destroy(&t->pthread_attr);
 	mjv_grabber_destroy(&t->grabber);
 	framebuf_destroy(t->framebuf);
-	mjv_framerate_destroy(&t->framerate);
+	framerate_destroy(&t->framerate);
 	if (t->pixbuf != NULL) {
 		g_object_unref(t->pixbuf);
 	}
@@ -396,7 +395,9 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 	thread->blinker = 1 - thread->blinker;
 	gtk_widget_queue_draw(thread->canvas);
 
-	framerate_insert_datapoint(thread, mjv_frame_get_timestamp(frame));
+	g_mutex_lock(&thread->framerate_mutex);
+	framerate_insert_datapoint(thread->framerate, mjv_frame_get_timestamp(frame));
+	g_mutex_unlock(&thread->framerate_mutex);
 
 	g_mutex_unlock(&thread->mutex);
 	gdk_threads_leave();
@@ -456,7 +457,7 @@ framerate_thread_main (void *user_data)
 	{
 		// Get FPS value:
 		g_mutex_lock(&t->framerate_mutex);
-		fps = mjv_framerate_estimate(t->framerate);
+		fps = framerate_estimate(t->framerate);
 		g_mutex_unlock(&t->framerate_mutex);
 
 		// Create label:
@@ -476,14 +477,6 @@ framerate_thread_main (void *user_data)
 		sleep(1);
 	}
 	return NULL;
-}
-
-static void
-framerate_insert_datapoint (struct mjv_thread *thread, const struct timespec *const ts)
-{
-	g_mutex_lock(&thread->framerate_mutex);
-	mjv_framerate_insert_datapoint(thread->framerate, ts);
-	g_mutex_unlock(&thread->framerate_mutex);
 }
 
 static void

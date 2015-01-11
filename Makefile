@@ -22,7 +22,7 @@ OBJS_PLAIN = \
   mjv_grabber.o \
   filename.o \
   framebuf.o \
-  mjv_framerate.o \
+  framerate.o \
   mjvmulti.o \
   mjvsingle.o \
   ringbuf.o
@@ -55,7 +55,7 @@ MJPEGVIEW_OBJS = \
   mjv_source.o \
   mjv_grabber.o \
   filename.o \
-  mjv_framerate.o \
+  framerate.o \
   mjpegview.o \
   mjv_config.o \
   framebuf.o \
@@ -76,7 +76,7 @@ MJVSINGLE_OBJS = \
   mjv_source.o \
   mjv_grabber.o \
   filename.o \
-  mjv_framerate.o \
+  framerate.o \
   ringbuf.o
 
 $(MJVSINGLE_PROG): $(MJVSINGLE_OBJS)
@@ -92,7 +92,7 @@ MJVMULTI_OBJS = \
   mjv_source.o \
   mjv_grabber.o \
   filename.o \
-  mjv_framerate.o \
+  framerate.o \
   ringbuf.o
 
 $(MJVMULTI_PROG): $(MJVMULTI_OBJS)

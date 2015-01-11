@@ -197,7 +197,7 @@ mjv_thread_destroy (struct mjv_thread *t)
 	g_mutex_clear(&t->framerate_mutex);
 	pthread_attr_destroy(&t->pthread_attr);
 	mjv_grabber_destroy(&t->grabber);
-	framebuf_destroy(t->framebuf);
+	framebuf_destroy(&t->framebuf);
 	framerate_destroy(&t->framerate);
 	if (t->pixbuf != NULL) {
 		g_object_unref(t->pixbuf);

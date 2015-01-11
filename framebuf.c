@@ -37,14 +37,15 @@ framebuf_create (unsigned int size)
 }
 
 void
-framebuf_destroy (struct framebuf *fb)
+framebuf_destroy (struct framebuf **fb)
 {
-	if (fb == NULL) {
+	if (fb == NULL || *fb == NULL) {
 		return;
 	}
-	log_debug("Destroying framebuf with %u members (capacity %u)\n", ringbuf_used(fb->rb), ringbuf_size(fb->rb));
-	ringbuf_destroy(&fb->rb);
-	free(fb);
+	log_debug("Destroying framebuf with %u members (capacity %u)\n", ringbuf_used((*fb)->rb), ringbuf_size((*fb)->rb));
+	ringbuf_destroy(&(*fb)->rb);
+	free(*fb);
+	*fb = NULL;
 }
 
 void

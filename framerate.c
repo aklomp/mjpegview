@@ -3,22 +3,20 @@
 
 #include "ringbuf.h"
 
-#define FRAMERATE_MEMORY  15
-
 struct framerate
 {
 	struct ringbuf *rb;
 };
 
 struct framerate *
-framerate_create (void)
+framerate_create (unsigned int size)
 {
 	struct framerate *f;
 
 	if ((f = malloc(sizeof(*f))) == NULL) {
 		return NULL;
 	}
-	if ((f->rb = ringbuf_create(FRAMERATE_MEMORY, sizeof(struct timespec), NULL)) == NULL) {
+	if ((f->rb = ringbuf_create(size, sizeof(struct timespec), NULL)) == NULL) {
 		free(f);
 		return NULL;
 	}

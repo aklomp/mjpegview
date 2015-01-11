@@ -43,7 +43,7 @@ static int
 test_estimate ()
 {
 	int ret = 0;
-	struct framerate *f = framerate_create();
+	struct framerate *f = framerate_create(5);
 
 	// No frames, estimate negative:
 	if (framerate_estimate(f) >= 0.0f) {

@@ -160,7 +160,7 @@ mjv_thread_create (struct mjv_source *source)
 	if ((t = calloc(1, sizeof(*t))) == NULL) {
 		return NULL;
 	}
-	if ((t->framerate = framerate_create()) == NULL) {
+	if ((t->framerate = framerate_create(15)) == NULL) {
 		free(t);
 		return NULL;
 	}

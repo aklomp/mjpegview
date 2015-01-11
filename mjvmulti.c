@@ -154,7 +154,7 @@ thread_create (struct mjv_source *s)
 	}
 	mjv_grabber_set_selfpipe(t->g, t->read_fd);
 
-	if ((t->fr = framerate_create()) == NULL) {
+	if ((t->fr = framerate_create(15)) == NULL) {
 		goto err;
 	}
 	return t;

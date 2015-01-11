@@ -290,7 +290,7 @@ main (int argc, char **argv)
 		ret = 1;
 		goto exit;
 	}
-	if ((fr = framerate_create()) == NULL) {
+	if ((fr = framerate_create(15)) == NULL) {
 		log_error("Error: could not create framerate estimator\n");
 		ret = 1;
 		goto exit;

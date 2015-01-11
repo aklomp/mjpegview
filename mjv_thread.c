@@ -157,11 +157,9 @@ mjv_thread_create (struct mjv_source *source)
 
 	struct mjv_thread *t;
 
-	if ((t = malloc(sizeof(*t))) == NULL) {
+	if ((t = calloc(1, sizeof(*t))) == NULL) {
 		return NULL;
 	}
-	memset(t, 0, sizeof(*t));
-
 	t->width   = 640;
 	t->height  = 480;
 	t->source  = source;

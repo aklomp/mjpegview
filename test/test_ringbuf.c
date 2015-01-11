@@ -66,6 +66,8 @@ test_oldest ()
 		int expect[4];
 		int next;
 		unsigned int used;
+		int oldest;
+		int newest;
 	}
 	testcases[] =
 	{
@@ -73,26 +75,36 @@ test_oldest ()
 	  , .expect = { 1, 0, 0, 0 }
 	  , .used = 1
 	  , .next = 1
+	  , .oldest = 1
+	  , .newest = 1
 	  }
 	, { .insert = 2
 	  , .expect = { 1, 2, 0, 0 }
 	  , .used = 2
 	  , .next = 2
+	  , .oldest = 1
+	  , .newest = 2
 	  }
 	, { .insert = 3
 	  , .expect = { 1, 2, 3, 0 }
 	  , .used = 3
 	  , .next = 3
+	  , .oldest = 1
+	  , .newest = 3
 	  }
 	, { .insert = 4
 	  , .expect = { 1, 2, 3, 4 }
 	  , .used = 4
 	  , .next = 0
+	  , .oldest = 1
+	  , .newest = 4
 	  }
 	, { .insert = 5
 	  , .expect = { 5, 2, 3, 4 }
 	  , .used = 4
 	  , .next = 1
+	  , .oldest = 2
+	  , .newest = 5
 	  }
 	} ;
 	struct ringbuf *rb;
@@ -123,6 +135,14 @@ test_oldest ()
 			goto out;
 		}
 		if (rb->used != testcases[i].used) {
+			ret = 1;
+			goto out;
+		}
+		if (*((int *)ringbuf_oldest(rb)) != testcases[i].oldest) {
+			ret = 1;
+			goto out;
+		}
+		if (*((int *)ringbuf_newest(rb)) != testcases[i].newest) {
 			ret = 1;
 			goto out;
 		}

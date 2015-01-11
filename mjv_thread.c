@@ -160,6 +160,15 @@ mjv_thread_create (struct mjv_source *source)
 	if ((t = calloc(1, sizeof(*t))) == NULL) {
 		return NULL;
 	}
+	if ((t->framerate = framerate_create()) == NULL) {
+		free(t);
+		return NULL;
+	}
+	if ((t->framebuf = framebuf_create(50)) == NULL) {
+		free(t);
+		framerate_destroy(&t->framerate);
+		return NULL;
+	}
 	t->width   = 640;
 	t->height  = 480;
 	t->source  = source;
@@ -169,9 +178,6 @@ mjv_thread_create (struct mjv_source *source)
 	t->spinner = NULL;
 
 	t->self_pipe_fd = -1;
-
-	t->framerate = framerate_create();		// TODO: check return code
-	t->framebuf = framebuf_create(50);
 
 	g_mutex_init(&t->mutex);
 	g_mutex_init(&t->framerate_mutex);

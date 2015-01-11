@@ -25,11 +25,8 @@ OBJS_PLAIN = \
   framerate.o \
   mjvmulti.o \
   mjvsingle.o \
+  mjpegview.o \
   ringbuf.o
-
-# These object files depend only on GLib:
-OBJS_GLIB = \
-  mjpegview.o
 
 # These object files depend on GLib and GTK+-2:
 OBJS_GTK = \

@@ -1,11 +1,8 @@
 #include <stdbool.h>
-#include <glib.h>
-#include <glib/gprintf.h>
+#include <stddef.h>	// NULL
 
 #include "mjv_log.h"
-#include "mjv_source.h"
 #include "mjv_config.h"
-#include "mjv_frame.h"
 #include "mjv_gui.h"
 
 // TODO: make this configurable:

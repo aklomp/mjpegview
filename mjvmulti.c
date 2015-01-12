@@ -37,23 +37,10 @@ struct thread {
 
 static int quit_flag = 0;
 
-static inline bool
-copy_string (const char *const src, char **const dst)
-{
-	size_t len = strlen(src) + 1;
-	if ((*dst = malloc(len)) == NULL) {
-		log_error("Error: out of memory\n");
-		return false;
-	}
-	memcpy(*dst, src, len);
-	return true;
-}
-
-static bool
+static void
 process_cmdline (int argc, char **argv, char **filename)
 {
-	int c;
-	int option_index = 0;
+	int c, option_index = 0;
 	static struct option long_options[] = {
 		{ "debug", 0, 0, 'd' },
 		{ "filename", 1, 0, 'f' },
@@ -68,10 +55,9 @@ process_cmdline (int argc, char **argv, char **filename)
 		{
 			case 'd': log_debug_on(); break;
 			case 'h': break;
-			case 'f': if (copy_string(optarg, filename)) break; return false;
+			case 'f': *filename = strdup(optarg); break;
 		}
 	}
-	return true;
 }
 
 static bool
@@ -280,10 +266,8 @@ main (int argc, char **argv)
 	struct thread *t = NULL;
 	struct thread *c = NULL;
 
-	if (!process_cmdline(argc, argv, &filename)) {
-		ret = 1;
-		goto exit;
-	}
+	process_cmdline(argc, argv, &filename);
+
 	if (filename == NULL) {
 		log_error("Error: no config file specified\n");
 		ret = 1;

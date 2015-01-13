@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <fcntl.h>
 #include <errno.h>
 #include <pthread.h>
 #include <time.h>
@@ -15,6 +14,7 @@
 #include "mjv_source.h"
 #include "mjv_grabber.h"
 #include "mjv_thread.h"
+#include "selfpipe.h"
 #include "spinner.h"
 
 #define UNUSED_PARAM(x)		(void)(x)
@@ -85,7 +85,6 @@ static GtkWidget *create_frame_statusbar (struct mjv_thread *);
 
 static char *status_string (struct mjv_thread *);
 static void update_state (struct mjv_thread *, enum state state);
-static bool make_selfpipe_pair (int *, int *);
 
 static void
 print_source_name (cairo_t *cr, const char *name)
@@ -176,8 +175,6 @@ mjv_thread_create (struct mjv_source *source)
 	t->canvas  = gtk_drawing_area_new();
 	t->state   = STATE_DISCONNECTED;
 	t->spinner = NULL;
-
-	t->self_pipe_fd = -1;
 
 	g_mutex_init(&t->mutex);
 	g_mutex_init(&t->framerate_mutex);
@@ -313,7 +310,7 @@ thread_main (void *user_data)
 
 	// Open a pipe pair to use in the self-pipe trick. When we write
 	// a byte to the pipe, the grabber knows to quit gracefully:
-	if (make_selfpipe_pair(&read_fd, &t->self_pipe_fd) == 0) {
+	if (selfpipe_pair(&read_fd, &t->self_pipe_fd) == false) {
 		goto exit;
 	}
 	mjv_grabber_set_selfpipe(t->grabber, read_fd);
@@ -554,25 +551,4 @@ update_state (struct mjv_thread *thread, enum state state)
 	gtk_label_set_text(GTK_LABEL(thread->statusbar.lbl_status), status_string(thread));
 	gtk_widget_queue_draw(thread->statusbar.lbl_status);
 	gdk_threads_leave();
-}
-
-static bool
-make_selfpipe_pair (int *read_fd, int *write_fd)
-{
-	int pfd[2];
-	int flags;
-
-	if (pipe(pfd) == -1) {
-		return false;
-	}
-	// Make nonblocking:
-	if ((flags = fcntl(pfd[0], F_GETFL)) == -1 || fcntl(pfd[0], F_SETFL, flags | O_NONBLOCK) == -1
-	 || (flags = fcntl(pfd[1], F_GETFL)) == -1 || fcntl(pfd[1], F_SETFL, flags | O_NONBLOCK) == -1) {
-		close(pfd[0]);
-		close(pfd[1]);
-		return false;
-	}
-	*read_fd = pfd[0];
-	*write_fd = pfd[1];
-	return true;
 }

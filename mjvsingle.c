@@ -15,6 +15,7 @@
 #include "filename.h"
 #include "framerate.h"
 #include "mjv_grabber.h"
+#include "selfpipe.h"
 
 // This is a really simple framegrabber for mjpeg streams. It is intended to
 // compile with the least possible dependencies, to make it useful on headless,
@@ -22,8 +23,7 @@
 // terms of simple interfaces and modularity.
 
 static int n_frames = 0;
-static int read_fd = -1;
-static int write_fd = -1;
+static int read_fd, write_fd;
 
 static bool
 copy_string (const char *const src, char **const dst)
@@ -189,27 +189,6 @@ got_frame_callback (struct mjv_frame *f, void *data)
 	mjv_frame_destroy(&f);
 }
 
-static bool
-make_selfpipe_pair (void)
-{
-	int pfd[2];
-	int flags;
-
-	if (pipe(pfd) == -1) {
-		return false;
-	}
-	// Make nonblocking:
-	if ((flags = fcntl(pfd[0], F_GETFL)) == -1 || fcntl(pfd[0], F_SETFL, flags | O_NONBLOCK) == -1
-	 || (flags = fcntl(pfd[1], F_GETFL)) == -1 || fcntl(pfd[1], F_SETFL, flags | O_NONBLOCK) == -1) {
-		close(pfd[0]);
-		close(pfd[1]);
-		return false;
-	}
-	read_fd = pfd[0];
-	write_fd = pfd[1];
-	return true;
-}
-
 static void
 sig_handler (int signum, siginfo_t *info, void *ptr)
 {
@@ -301,7 +280,7 @@ main (int argc, char **argv)
 		goto exit;
 	}
 	// Create pipe pair to signal quit message to grabber, using the self-pipe trick:
-	if (make_selfpipe_pair() == 0) {
+	if (selfpipe_pair(&read_fd, &write_fd) == false) {
 		log_error("Error: could not create pipe\n");
 		ret = 1;
 		goto exit;

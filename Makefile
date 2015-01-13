@@ -26,7 +26,8 @@ OBJS_PLAIN = \
   mjvmulti.o \
   mjvsingle.o \
   mjpegview.o \
-  ringbuf.o
+  ringbuf.o \
+  selfpipe.o
 
 # These object files depend on GLib and GTK+-2:
 OBJS_GTK = \
@@ -59,6 +60,7 @@ MJPEGVIEW_OBJS = \
   mjv_gui.o \
   mjv_thread.o \
   ringbuf.o \
+  selfpipe.o \
   spinner.o
 
 $(MJPEGVIEW_PROG): $(MJPEGVIEW_OBJS)
@@ -74,7 +76,8 @@ MJVSINGLE_OBJS = \
   mjv_grabber.o \
   filename.o \
   framerate.o \
-  ringbuf.o
+  ringbuf.o \
+  selfpipe.o
 
 $(MJVSINGLE_PROG): $(MJVSINGLE_OBJS)
 	$(CC) $(MJVSINGLE_LDFLAGS) $^ -o $@
@@ -90,7 +93,8 @@ MJVMULTI_OBJS = \
   mjv_grabber.o \
   filename.o \
   framerate.o \
-  ringbuf.o
+  ringbuf.o \
+  selfpipe.o
 
 $(MJVMULTI_PROG): $(MJVMULTI_OBJS)
 	$(CC) $(MJVMULTI_LDFLAGS) $^ -o $@

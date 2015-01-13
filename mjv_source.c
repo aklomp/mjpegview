@@ -8,7 +8,6 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <arpa/inet.h>
-#include <errno.h>
 
 #include "mjv_log.h"
 #include "mjv_source.h"

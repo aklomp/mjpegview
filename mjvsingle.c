@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <getopt.h>
 #include <signal.h>
-#include <errno.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
@@ -198,14 +197,7 @@ sig_handler (int signum, siginfo_t *info, void *ptr)
 
 	// Terminate a thread by sending a byte of data through the write end
 	// of the self-pipe. The grabber catches this and exits gracefully:
-	if (write_fd < 0) {
-		return;
-	}
-	while (write(write_fd, "X", 1) == -1 && errno == EAGAIN) {
-		continue;
-	}
-	close(write_fd);
-	write_fd = -1;
+	selfpipe_write_close(&write_fd);
 }
 
 static void
@@ -300,7 +292,7 @@ main (int argc, char **argv)
 
 exit:	framerate_destroy(&fr);
 	if (g) {
-		mjv_grabber_close_selfpipe(g);
+		selfpipe_read_close(&read_fd);
 		mjv_grabber_destroy(&g);
 	}
 	if (write_fd >= 0) {

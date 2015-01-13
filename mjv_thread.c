@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <errno.h>
 #include <pthread.h>
 #include <time.h>
 #include <glib.h>
@@ -221,21 +220,10 @@ mjv_thread_run (struct mjv_thread *t)
 bool
 mjv_thread_cancel (struct mjv_thread *t)
 {
-	int ret;
-
 	// Terminate a thread by sending a byte of data through the write end
 	// of the self-pipe. The grabber catches this and exits gracefully:
-	if (t->self_pipe_fd < 0) {
-		return false;
-	}
-	while ((ret = write(t->self_pipe_fd, "X", 1)) == -1 && errno == EAGAIN) {
-		continue;
-	}
-	if (ret == -1) {
-		return false;
-	}
-	close(t->self_pipe_fd);
-	t->self_pipe_fd = -1;
+	selfpipe_write_close(&t->self_pipe_fd);
+
 	if (pthread_join(t->pthread, NULL) != 0) {
 		return false;
 	}
@@ -320,7 +308,7 @@ thread_main (void *user_data)
 	mjv_grabber_run(t->grabber);
 
 	// We are disconnected:
-	mjv_grabber_close_selfpipe(t->grabber);
+	selfpipe_read_close(&read_fd);
 
 exit:	mjv_grabber_destroy(&t->grabber);
 	update_state(t, STATE_DISCONNECTED);

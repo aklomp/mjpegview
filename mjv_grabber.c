@@ -131,7 +131,6 @@ mjv_grabber_destroy (struct mjv_grabber **s)
 	log_info("Destroying source %s\n", mjv_source_get_name((*s)->source));
 	free((*s)->boundary);
 	free((*s)->buf);
-	mjv_grabber_close_selfpipe(*s);
 	free(*s);
 	*s = NULL;
 }
@@ -147,16 +146,6 @@ void
 mjv_grabber_set_selfpipe (struct mjv_grabber *s, int pipe_read_fd)
 {
 	s->self_pipe_fd = pipe_read_fd;
-}
-
-void
-mjv_grabber_close_selfpipe (struct mjv_grabber *s)
-{
-	if (s->self_pipe_fd < 0) {
-		return;
-	}
-	close(s->self_pipe_fd);
-	s->self_pipe_fd = -1;
 }
 
 static void

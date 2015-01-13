@@ -5,7 +5,6 @@
 #include <string.h>
 #include <signal.h>
 #include <getopt.h>
-#include <errno.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -76,6 +75,7 @@ thread_destroy (struct thread **t)
 	}
 	framerate_destroy(&(*t)->fr);
 	mjv_grabber_destroy(&(*t)->g);
+	selfpipe_read_close(&(*t)->read_fd);
 	free(*t);
 	*t = NULL;
 }
@@ -85,14 +85,7 @@ thread_cancel (struct thread *t)
 {
 	// Terminate a thread by sending a byte of data through the write end
 	// of the self-pipe. The grabber catches this and exits gracefully:
-	if (t->write_fd < 0) {
-		return;
-	}
-	while (write(t->write_fd, "X", 1) == -1 && errno == EAGAIN) {
-		continue;
-	}
-	close(t->write_fd);
-	t->write_fd = -1;
+	selfpipe_write_close(&t->write_fd);
 	pthread_join(t->pthread, NULL);
 }
 

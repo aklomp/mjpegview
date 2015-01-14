@@ -11,9 +11,18 @@
 // Cast a GList's data pointer to an object pointer:
 #define MJV_THREAD(x)    ((struct mjv_thread *)((x)->data))
 
-static void cancel_all_threads (void);
-
 static GList *thread_list = NULL;
+
+static void
+cancel_all_threads (void)
+{
+	GList *link;
+
+	gdk_threads_leave();
+	for (link = g_list_first(thread_list); link; link = g_list_next(link)) {
+		mjv_thread_cancel(MJV_THREAD(link));
+	}
+}
 
 static void
 on_destroy (void)
@@ -78,15 +87,4 @@ mjv_gui_main (int argc, char **argv, struct mjv_config *config)
 	g_list_free_full(thread_list, (GDestroyNotify)(mjv_thread_destroy));
 
 	return 0;
-}
-
-static void
-cancel_all_threads (void)
-{
-	GList *link;
-
-	gdk_threads_leave();
-	for (link = g_list_first(thread_list); link; link = g_list_next(link)) {
-		mjv_thread_cancel(MJV_THREAD(link));
-	}
 }

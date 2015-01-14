@@ -49,7 +49,7 @@ ringbuf_destroy (struct ringbuf **rb)
 }
 
 void
-ringbuf_append (struct ringbuf *rb, void *datum)
+ringbuf_append (struct ringbuf *rb, const void *datum)
 {
 	if (rb == NULL) {
 		return;
@@ -75,7 +75,7 @@ ringbuf_append (struct ringbuf *rb, void *datum)
 }
 
 void *
-ringbuf_oldest (struct ringbuf *rb)
+ringbuf_oldest (const struct ringbuf *rb)
 {
 	if (rb == NULL) {
 		return NULL;
@@ -88,7 +88,7 @@ ringbuf_oldest (struct ringbuf *rb)
 }
 
 void *
-ringbuf_newest (struct ringbuf *rb)
+ringbuf_newest (const struct ringbuf *rb)
 {
 	if (rb == NULL) {
 		return NULL;
@@ -100,13 +100,13 @@ ringbuf_newest (struct ringbuf *rb)
 }
 
 unsigned int
-ringbuf_size (struct ringbuf *rb)
+ringbuf_size (const struct ringbuf *rb)
 {
 	return rb->size;
 }
 
 unsigned int
-ringbuf_used (struct ringbuf *rb)
+ringbuf_used (const struct ringbuf *rb)
 {
 	return rb->used;
 }

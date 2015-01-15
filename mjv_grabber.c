@@ -74,7 +74,6 @@ static inline bool is_numeric (char);
 static int interpret_content_type (struct mjv_grabber *, char *, unsigned int);
 static bool got_new_frame (struct mjv_grabber *, char *, unsigned int);
 static void adjust_streambuf (struct mjv_grabber *);
-static void artificial_delay (unsigned int, struct timespec *);
 
 static int state_http_banner (struct mjv_grabber *);
 static int state_http_header (struct mjv_grabber *);
@@ -673,6 +672,40 @@ interpret_content_type (struct mjv_grabber *s, char *line, unsigned int line_len
 #undef STRING_MATCH
 }
 
+static void
+artificial_delay (unsigned int delay_usec, struct timespec *last)
+{
+	struct timespec now;
+	unsigned long delay_sec;
+	unsigned long delay_nsec;
+
+	if (delay_usec < 1000000) {
+		delay_sec = 0;
+		delay_nsec = delay_usec * 1000;
+	}
+	else {
+		delay_sec = delay_usec / 1000000;
+		delay_nsec = (delay_usec % 1000000) * 1000;
+	}
+	clock_gettime(CLOCK_REALTIME, &now);
+
+	// Need a nonzero previous timestamp to time against:
+	if (last->tv_sec > 0)
+	{
+		// Calculate scheduled awakening:
+		now.tv_sec  = last->tv_sec  + delay_sec;
+		now.tv_nsec = last->tv_nsec + delay_nsec;
+		if (now.tv_nsec >= 1000000000) {
+			now.tv_sec++;
+			now.tv_nsec -= 1000000000;
+		}
+		// Keep sleeping across interrupts until the now has come to pass:
+		while (clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &now, NULL) != 0);
+	}
+	// Update the last emission time to the now:
+	memcpy(last, &now, sizeof(struct timespec));
+}
+
 static bool
 got_new_frame (struct mjv_grabber *s, char *start, unsigned int len)
 {
@@ -708,38 +741,4 @@ got_new_frame (struct mjv_grabber *s, char *start, unsigned int len)
 	s->callback(frame, s->user_pointer);
 
 	return true;
-}
-
-static void
-artificial_delay (unsigned int delay_usec, struct timespec *last)
-{
-	struct timespec now;
-	unsigned long delay_sec;
-	unsigned long delay_nsec;
-
-	if (delay_usec < 1000000) {
-		delay_sec = 0;
-		delay_nsec = delay_usec * 1000;
-	}
-	else {
-		delay_sec = delay_usec / 1000000;
-		delay_nsec = (delay_usec % 1000000) * 1000;
-	}
-	clock_gettime(CLOCK_REALTIME, &now);
-
-	// Need a nonzero previous timestamp to time against:
-	if (last->tv_sec > 0)
-	{
-		// Calculate scheduled awakening:
-		now.tv_sec  = last->tv_sec  + delay_sec;
-		now.tv_nsec = last->tv_nsec + delay_nsec;
-		if (now.tv_nsec >= 1000000000) {
-			now.tv_sec++;
-			now.tv_nsec -= 1000000000;
-		}
-		// Keep sleeping across interrupts until the now has come to pass:
-		while (clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &now, NULL) != 0);
-	}
-	// Update the last emission time to the now:
-	memcpy(last, &now, sizeof(struct timespec));
 }

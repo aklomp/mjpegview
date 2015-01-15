@@ -71,7 +71,6 @@ struct mjv_grabber
 static int fetch_header_line (struct mjv_grabber *, char **, unsigned int *);
 static inline int increment_cur (struct mjv_grabber *);
 static inline bool is_numeric (char);
-static inline unsigned int simple_atoi (const char *, const char *);
 static int interpret_content_type (struct mjv_grabber *, char *, unsigned int);
 static bool got_new_frame (struct mjv_grabber *, char *, unsigned int);
 static void adjust_streambuf (struct mjv_grabber *);
@@ -84,6 +83,19 @@ static int state_http_subheader (struct mjv_grabber *);
 static int state_find_image (struct mjv_grabber *);
 static int state_image_by_content_length (struct mjv_grabber *);
 static int state_image_by_eof_search (struct mjv_grabber *);
+
+static inline unsigned int
+simple_atoi (const char *first, const char *last)
+{
+	// Really simple. Only does smallish positive integers,
+	// under the assumption that all chars are '0'..'9'.
+	const char *c = first;
+	unsigned int i = 0;
+	while (c <= last) {
+		i = i * 10 + (*c++ - '0');
+	}
+	return i;
+}
 
 struct mjv_grabber *
 mjv_grabber_create (struct mjv_source *source)
@@ -584,19 +596,6 @@ fetch_header_line (struct mjv_grabber *s, char **line, unsigned int *line_len)
 			return OUT_OF_BYTES;
 		}
 	}
-}
-
-static inline unsigned int
-simple_atoi (const char *first, const char *last)
-{
-	// Really simple. Only does smallish positive integers,
-	// under the assumption that all chars are '0'..'9'.
-	const char *c = first;
-	unsigned int i = 0;
-	while (c <= last) {
-		i = i * 10 + (*c++ - '0');
-	}
-	return i;
 }
 
 static int

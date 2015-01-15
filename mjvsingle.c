@@ -266,7 +266,7 @@ main (int argc, char **argv)
 		ret = 1;
 		goto exit;
 	}
-	if (mjv_source_open(s) == 0) {
+	if (mjv_source_open(s) == false) {
 		log_error("Error: could not open config source\n");
 		ret = 1;
 		goto exit;

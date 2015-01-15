@@ -279,7 +279,7 @@ thread_main (void *user_data)
 	update_state(t, STATE_CONNECTING);
 
 	// Open source file descriptor:
-	if (mjv_source_open(t->source) == 0) {
+	if (mjv_source_open(t->source) == false) {
 		spinner_destroy(&t->spinner);
 		update_state(t, STATE_DISCONNECTED);
 		return NULL;

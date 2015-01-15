@@ -188,7 +188,7 @@ thread_main (void *data)
 	struct mjv_source *s = ((struct thread *)data)->s;
 	struct mjv_grabber *g = ((struct thread *)data)->g;
 
-	if (mjv_source_open(s) == 0) {
+	if (mjv_source_open(s) == false) {
 		log_error("Error: could not open config source\n");
 		goto exit;
 	}

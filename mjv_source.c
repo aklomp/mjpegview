@@ -31,8 +31,6 @@ struct mjv_source {
 	};
 };
 
-static bool open_file (struct mjv_source *s);
-static bool open_network (struct mjv_source *s);
 static bool write_http_request (struct mjv_source *s);
 static bool write_auth_string (struct mjv_source *s);
 static void base64_encode (char *const src, size_t srclen, char *const dst);
@@ -180,16 +178,6 @@ const char *mjv_source_get_pass (const struct mjv_source *const s) { return s->p
       int   mjv_source_get_usec (const struct mjv_source *const s) { return s->usec; }
       int   mjv_source_get_fd   (const struct mjv_source *const s) { return s->fd;   }
 
-int
-mjv_source_open (struct mjv_source *cs)
-{
-	switch (cs->type) {
-		case TYPE_FILE:    return open_file(cs);
-		case TYPE_NETWORK: return open_network(cs);
-	}
-	return 0;
-}
-
 static bool
 open_file (struct mjv_source *s)
 {
@@ -253,6 +241,16 @@ open_network (struct mjv_source *s)
 		return false;
 	}
 	return write_http_request(s);
+}
+
+bool
+mjv_source_open (struct mjv_source *cs)
+{
+	switch (cs->type) {
+		case TYPE_FILE:    return open_file(cs);
+		case TYPE_NETWORK: return open_network(cs);
+	}
+	return false;
 }
 
 static bool

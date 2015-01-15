@@ -31,7 +31,6 @@ struct mjv_source {
 	};
 };
 
-static bool set_default_name (struct mjv_source *s);
 static bool open_file (struct mjv_source *s);
 static bool open_network (struct mjv_source *s);
 static bool write_http_request (struct mjv_source *s);
@@ -70,6 +69,16 @@ static char err_malloc_failed[] = "malloc() failed\n";
 
 #define SAFE_WRITE_STR(x) \
 		SAFE_WRITE(x, STR_LEN(x))
+
+static bool
+set_default_name (struct mjv_source *s)
+{
+	if ((s->name = strdup("(unnamed)")) == NULL) {
+		log_error(err_malloc_failed);
+		return false;
+	}
+	return true;
+}
 
 struct mjv_source *
 mjv_source_create_from_file (const char *const name, const char *const file, const int usec)
@@ -179,18 +188,6 @@ mjv_source_open (struct mjv_source *cs)
 		case TYPE_NETWORK: return open_network(cs);
 	}
 	return 0;
-}
-
-static bool
-set_default_name (struct mjv_source *s)
-{
-	char name[] = "(unnamed)";
-	if ((s->name = malloc(sizeof(name))) == NULL) {
-		log_error(err_malloc_failed);
-		return false;
-	}
-	memcpy(s->name, name, sizeof(name));
-	return true;
 }
 
 static bool

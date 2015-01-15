@@ -33,7 +33,6 @@ struct mjv_source {
 
 static bool write_http_request (struct mjv_source *s);
 static bool write_auth_string (struct mjv_source *s);
-static void base64_encode (char *const src, size_t srclen, char *const dst);
 
 static char err_write_failed[] = "Write failed\n";
 static char err_malloc_failed[] = "malloc() failed\n";
@@ -290,35 +289,6 @@ err:	free(buffer);
 	return ret;
 }
 
-static bool
-write_auth_string (struct mjv_source *s)
-{
-	bool ret = true;
-	size_t user_len = strlen(s->user);
-	size_t pass_len = strlen(s->pass);
-	char auth_string[user_len + pass_len + 1];
-	char base64_auth_string[((user_len + pass_len + 1) * 4) / 3 + 3];
-
-	// Caller ensures s->user and s->pass are non-NULL
-	// The auth string has the form 'username:password':
-	memcpy(auth_string, s->user, user_len);
-	auth_string[user_len] = ':';
-	memcpy(auth_string + user_len + 1, s->pass, pass_len);
-
-	// Encode this auth string into base64:
-	base64_encode(auth_string, user_len + pass_len + 1, base64_auth_string);
-
-	// Print auth header:
-	char header_fmt[] = "Authorization: Basic %s\r\n";
-	size_t header_len = STR_LEN(header_fmt) - 2 + strlen(base64_auth_string);
-	char header[header_len + 1];
-
-	snprintf(header, header_len + 1, header_fmt, base64_auth_string);
-	SAFE_WRITE(header, header_len);
-
-err:	return ret;
-}
-
 static void
 base64_encode (char *const src, size_t srclen, char *const dst)
 {
@@ -368,4 +338,33 @@ out:		for (int i = 0; i < 4; i++) {
 		}
 	}
 	*o = '\0';
+}
+
+static bool
+write_auth_string (struct mjv_source *s)
+{
+	bool ret = true;
+	size_t user_len = strlen(s->user);
+	size_t pass_len = strlen(s->pass);
+	char auth_string[user_len + pass_len + 1];
+	char base64_auth_string[((user_len + pass_len + 1) * 4) / 3 + 3];
+
+	// Caller ensures s->user and s->pass are non-NULL
+	// The auth string has the form 'username:password':
+	memcpy(auth_string, s->user, user_len);
+	auth_string[user_len] = ':';
+	memcpy(auth_string + user_len + 1, s->pass, pass_len);
+
+	// Encode this auth string into base64:
+	base64_encode(auth_string, user_len + pass_len + 1, base64_auth_string);
+
+	// Print auth header:
+	char header_fmt[] = "Authorization: Basic %s\r\n";
+	size_t header_len = STR_LEN(header_fmt) - 2 + strlen(base64_auth_string);
+	char header[header_len + 1];
+
+	snprintf(header, header_len + 1, header_fmt, base64_auth_string);
+	SAFE_WRITE(header, header_len);
+
+err:	return ret;
 }

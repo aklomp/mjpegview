@@ -16,8 +16,6 @@
 #include "selfpipe.h"
 #include "spinner.h"
 
-#define UNUSED_PARAM(x)		(void)(x)
-
 enum state
 { STATE_DISCONNECTED
 , STATE_CONNECTING
@@ -82,7 +80,6 @@ static void create_frame (struct mjv_thread *);
 static void create_frame_toolbar (struct mjv_thread *);
 static GtkWidget *create_frame_statusbar (struct mjv_thread *);
 
-static char *status_string (struct mjv_thread *);
 static void update_state (struct mjv_thread *, enum state state);
 
 static void
@@ -106,9 +103,9 @@ print_source_name (cairo_t *cr, const char *name)
 static gboolean
 canvas_repaint (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 {
-	UNUSED_PARAM(event);
 	const char *source_name;
 	struct mjv_thread *t = (struct mjv_thread *)(user_data);
+	(void)event;
 
 	// Note: this function is EXCLUSIVELY called from gtk_main() as a callback,
 	// and thus within the global thread lock. Hence NO locking is necessary here

@@ -50,7 +50,7 @@ struct mjv_grabber
 	enum states state;	// state machine state
 	char *boundary;
 	int delay_usec;
-	int self_pipe_fd;	// selfpipe read end (for cancellation notification)
+	int selfpipe_readfd;	// selfpipe read end (for cancellation notification)
 	unsigned int boundary_len;
 	unsigned int response_code;
 	unsigned int content_length;
@@ -116,7 +116,7 @@ mjv_grabber_create (struct mjv_source *source)
 	s->last_emitted.tv_sec = 0;
 	s->last_emitted.tv_nsec = 0;
 	s->source = source;
-	s->self_pipe_fd = -1;
+	s->selfpipe_readfd = -1;
 
 	s->callback = NULL;
 	s->user_pointer = NULL;
@@ -156,7 +156,7 @@ mjv_grabber_set_callback (struct mjv_grabber *s, void (*got_frame_callback)(stru
 void
 mjv_grabber_set_selfpipe (struct mjv_grabber *s, int pipe_read_fd)
 {
-	s->self_pipe_fd = pipe_read_fd;
+	s->selfpipe_readfd = pipe_read_fd;
 }
 
 static void
@@ -213,17 +213,19 @@ mjv_grabber_run (struct mjv_grabber *s)
 		log_error("Invalid file descriptor\n");
 		return MJV_GRABBER_READ_ERROR;
 	}
+	int nfds = ((fd > s->selfpipe_readfd) ? fd : s->selfpipe_readfd) + 1;
+
 	for (;;)
 	{
 		FD_ZERO(&fdset);
 		FD_SET(fd, &fdset);
-		if (s->self_pipe_fd >= 0) {
-			FD_SET(s->self_pipe_fd, &fdset);
+		if (s->selfpipe_readfd >= 0) {
+			FD_SET(s->selfpipe_readfd, &fdset);
 		}
 		timeout.tv_sec = 10;
 		timeout.tv_usec = 0;
 
-		while ((available = select(((fd > s->self_pipe_fd) ? fd : s->self_pipe_fd) + 1, &fdset, NULL, NULL, &timeout)) == -1 && errno == EINTR) {
+		while ((available = select(nfds, &fdset, NULL, NULL, &timeout)) == -1 && errno == EINTR) {
 			continue;
 		}
 		if (available == 0) {
@@ -237,7 +239,7 @@ mjv_grabber_run (struct mjv_grabber *s)
 		}
 		// Check if a byte entered through the end of the self-pipe;
 		// this indicates that we need to exit the loop:
-		if (s->self_pipe_fd >= 0 && FD_ISSET(s->self_pipe_fd, &fdset)) {
+		if (s->selfpipe_readfd >= 0 && FD_ISSET(s->selfpipe_readfd, &fdset)) {
 			break;
 		}
 		s->nread = read(fd, s->head, BUF_SIZE - (s->head - s->buf));

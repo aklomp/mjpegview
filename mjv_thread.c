@@ -40,7 +40,8 @@ struct mjv_thread {
 	GdkPixbuf *pixbuf;
 	GtkWidget *frame;
 	GtkWidget *canvas;
-	int self_pipe_fd;
+	int selfpipe_readfd;
+	int selfpipe_writefd;
 	unsigned int width;
 	unsigned int height;
 	unsigned int blinker;
@@ -153,16 +154,18 @@ mjv_thread_create (struct mjv_source *source)
 	struct mjv_thread *t;
 
 	if ((t = calloc(1, sizeof(*t))) == NULL) {
-		return NULL;
+		goto err_0;
 	}
 	if ((t->framerate = framerate_create(15)) == NULL) {
-		free(t);
-		return NULL;
+		goto err_1;
 	}
 	if ((t->framebuf = framebuf_create(50)) == NULL) {
-		free(t);
-		framerate_destroy(&t->framerate);
-		return NULL;
+		goto err_2;
+	}
+	// Open a pipe pair to use in the self-pipe trick. When we write
+	// a byte to the pipe, the grabber knows to quit gracefully:
+	if (selfpipe_pair(&t->selfpipe_readfd, &t->selfpipe_writefd) == false) {
+		goto err_3;
 	}
 	t->width   = 640;
 	t->height  = 480;
@@ -182,6 +185,11 @@ mjv_thread_create (struct mjv_source *source)
 	gtk_signal_connect(GTK_OBJECT(t->canvas), "expose_event", GTK_SIGNAL_FUNC(canvas_repaint), t);
 
 	return t;
+
+err_3:	framebuf_destroy(&t->framebuf);
+err_2:	framerate_destroy(&t->framerate);
+err_1:	free(t);
+err_0:	return NULL;
 }
 
 void
@@ -199,9 +207,8 @@ mjv_thread_destroy (struct mjv_thread *t)
 	if (t->pixbuf != NULL) {
 		g_object_unref(t->pixbuf);
 	}
-	if (t->self_pipe_fd >= 0) {
-		close(t->self_pipe_fd);
-	}
+	selfpipe_write_close(&t->selfpipe_writefd);
+	selfpipe_read_close(&t->selfpipe_readfd);
 	free(t);
 }
 
@@ -219,7 +226,7 @@ mjv_thread_cancel (struct mjv_thread *t)
 {
 	// Terminate a thread by sending a byte of data through the write end
 	// of the self-pipe. The grabber catches this and exits gracefully:
-	selfpipe_write_close(&t->self_pipe_fd);
+	selfpipe_write_close(&t->selfpipe_writefd);
 
 	if (pthread_join(t->pthread, NULL) != 0) {
 		return false;
@@ -267,8 +274,6 @@ on_spinner_tick (void *userdata)
 static void *
 thread_main (void *user_data)
 {
-	int read_fd;
-
 	struct mjv_thread *t = (struct mjv_thread *)user_data;
 
 	// Try to connect:
@@ -287,27 +292,19 @@ thread_main (void *user_data)
 		return NULL;
 	}
 	mjv_grabber_set_callback(t->grabber, &callback_got_frame, (void *)t);
+	mjv_grabber_set_selfpipe(t->grabber, t->selfpipe_readfd);
 
 	// We are connected:
 	update_state(t, STATE_CONNECTED);
 	spinner_destroy(&t->spinner);
 	framerate_thread_run(t);
 
-	// Open a pipe pair to use in the self-pipe trick. When we write
-	// a byte to the pipe, the grabber knows to quit gracefully:
-	if (selfpipe_pair(&read_fd, &t->self_pipe_fd) == false) {
-		goto exit;
-	}
-	mjv_grabber_set_selfpipe(t->grabber, read_fd);
-
 	// Stay in this function till it terminates;
 	// meanwhile we get frames back through callback_got_frame():
 	mjv_grabber_run(t->grabber);
 
 	// We are disconnected:
-	selfpipe_read_close(&read_fd);
-
-exit:	mjv_grabber_destroy(&t->grabber);
+	mjv_grabber_destroy(&t->grabber);
 	update_state(t, STATE_DISCONNECTED);
 	framerate_thread_kill(t);
 	return NULL;

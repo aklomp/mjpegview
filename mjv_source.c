@@ -31,9 +31,6 @@ struct mjv_source {
 	};
 };
 
-static bool write_http_request (struct mjv_source *s);
-static bool write_auth_string (struct mjv_source *s);
-
 static char err_write_failed[] = "Write failed\n";
 static char err_malloc_failed[] = "malloc() failed\n";
 
@@ -191,104 +188,6 @@ open_file (struct mjv_source *s)
 	return true;
 }
 
-static bool
-open_network (struct mjv_source *s)
-{
-	char port_str[6];
-	struct addrinfo hints;
-	struct addrinfo *result;
-	struct addrinfo *rp;
-
-	// Validate port:
-	if (s->port < 0 || s->port > 65535) {
-		log_error("Invalid port\n");
-		return false;
-	}
-	// Validate host:
-	if (s->host == NULL) {
-		log_error("No host given\n");
-		return false;
-	}
-	memset(&hints, 0, sizeof(struct addrinfo));
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = 0;
-	hints.ai_protocol = IPPROTO_TCP;
-
-	// The second argument of getaddrinfo() is the port number
-	// as a string, so snprintf it:
-	snprintf(port_str, sizeof(port_str), "%u", s->port);
-	if (getaddrinfo(s->host, port_str, &hints, &result) != 0) {
-		perror("getaddrinfo()");
-		return false;
-	}
-	// Loop over results, trying them all till we find a descriptor
-	// that works:
-	for (rp = result; rp != NULL; rp = rp->ai_next) {
-		if ((s->fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) < 0) {
-			continue;
-		}
-		if (connect(s->fd, rp->ai_addr, rp->ai_addrlen) >= 0) {
-			break;
-		}
-		close(s->fd);
-	}
-	freeaddrinfo(result);
-	if (rp == NULL) {
-		s->fd = -1;
-		log_error("Could not connect\n");
-		return false;
-	}
-	return write_http_request(s);
-}
-
-bool
-mjv_source_open (struct mjv_source *cs)
-{
-	switch (cs->type) {
-		case TYPE_FILE:    return open_file(cs);
-		case TYPE_NETWORK: return open_network(cs);
-	}
-	return false;
-}
-
-static bool
-write_http_request (struct mjv_source *s)
-{
-	bool ret = true;
-	char *buffer = NULL;
-	size_t buffer_len;
-	char crlf[] = "\r\n";
-	char keep_alive[] = "Connection: Keep-Alive\r\n";
-
-	if ((buffer = malloc(100)) == NULL) {
-		log_error(err_malloc_failed);
-		ret = false;
-		goto err;
-	}
-	if ((buffer_len = snprintf(buffer, 100, "GET %s HTTP/1.0\r\n", s->path)) >= 100) {
-		log_error("snprintf() buffer too short\n");
-		ret = false;
-		goto err;
-	}
-	// We have to write header lines in their entirety at once;
-	// at least one IP camera closes its connection if it receives
-	// a partial line.
-	SAFE_WRITE(buffer, buffer_len);
-	SAFE_WRITE_STR(keep_alive);
-
-	// Write basic authentication header if credentials available:
-	if (s->user != NULL && s->pass != NULL && write_auth_string(s) == 0) {
-		ret = false;
-		goto err;
-	}
-	// Finalize header with an extra CRLF:
-	SAFE_WRITE_STR(crlf);
-
-err:	free(buffer);
-	return ret;
-}
-
 static void
 base64_encode (char *const src, size_t srclen, char *const dst)
 {
@@ -367,4 +266,102 @@ write_auth_string (struct mjv_source *s)
 	SAFE_WRITE(header, header_len);
 
 err:	return ret;
+}
+
+static bool
+write_http_request (struct mjv_source *s)
+{
+	bool ret = true;
+	char *buffer = NULL;
+	size_t buffer_len;
+	char crlf[] = "\r\n";
+	char keep_alive[] = "Connection: Keep-Alive\r\n";
+
+	if ((buffer = malloc(100)) == NULL) {
+		log_error(err_malloc_failed);
+		ret = false;
+		goto err;
+	}
+	if ((buffer_len = snprintf(buffer, 100, "GET %s HTTP/1.0\r\n", s->path)) >= 100) {
+		log_error("snprintf() buffer too short\n");
+		ret = false;
+		goto err;
+	}
+	// We have to write header lines in their entirety at once;
+	// at least one IP camera closes its connection if it receives
+	// a partial line.
+	SAFE_WRITE(buffer, buffer_len);
+	SAFE_WRITE_STR(keep_alive);
+
+	// Write basic authentication header if credentials available:
+	if (s->user != NULL && s->pass != NULL && write_auth_string(s) == 0) {
+		ret = false;
+		goto err;
+	}
+	// Finalize header with an extra CRLF:
+	SAFE_WRITE_STR(crlf);
+
+err:	free(buffer);
+	return ret;
+}
+
+static bool
+open_network (struct mjv_source *s)
+{
+	char port_str[6];
+	struct addrinfo hints;
+	struct addrinfo *result;
+	struct addrinfo *rp;
+
+	// Validate port:
+	if (s->port < 0 || s->port > 65535) {
+		log_error("Invalid port\n");
+		return false;
+	}
+	// Validate host:
+	if (s->host == NULL) {
+		log_error("No host given\n");
+		return false;
+	}
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = 0;
+	hints.ai_protocol = IPPROTO_TCP;
+
+	// The second argument of getaddrinfo() is the port number
+	// as a string, so snprintf it:
+	snprintf(port_str, sizeof(port_str), "%u", s->port);
+	if (getaddrinfo(s->host, port_str, &hints, &result) != 0) {
+		perror("getaddrinfo()");
+		return false;
+	}
+	// Loop over results, trying them all till we find a descriptor
+	// that works:
+	for (rp = result; rp != NULL; rp = rp->ai_next) {
+		if ((s->fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) < 0) {
+			continue;
+		}
+		if (connect(s->fd, rp->ai_addr, rp->ai_addrlen) >= 0) {
+			break;
+		}
+		close(s->fd);
+	}
+	freeaddrinfo(result);
+	if (rp == NULL) {
+		s->fd = -1;
+		log_error("Could not connect\n");
+		return false;
+	}
+	return write_http_request(s);
+}
+
+bool
+mjv_source_open (struct mjv_source *cs)
+{
+	switch (cs->type) {
+		case TYPE_FILE:    return open_file(cs);
+		case TYPE_NETWORK: return open_network(cs);
+	}
+	return false;
 }

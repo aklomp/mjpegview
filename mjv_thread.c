@@ -66,22 +66,11 @@ struct mjv_thread {
 
 static void *thread_main (void *);
 static void callback_got_frame (struct frame *, void *);
-static void destroy_pixels (guchar *, gpointer);
 static void draw_blinker (cairo_t *, int, int, int);
 
 static void framerate_thread_run (struct mjv_thread *);
 static void framerate_thread_kill (struct mjv_thread *);
 static void *framerate_thread_main (void *);
-
-static void create_frame (struct mjv_thread *);
-static void create_frame_toolbar (struct mjv_thread *);
-static GtkWidget *create_frame_statusbar (struct mjv_thread *);
-
-static void create_frame (struct mjv_thread *);
-static void create_frame_toolbar (struct mjv_thread *);
-static GtkWidget *create_frame_statusbar (struct mjv_thread *);
-
-static void update_state (struct mjv_thread *, enum state state);
 
 static void
 print_source_name (cairo_t *cr, const char *name)
@@ -143,6 +132,58 @@ canvas_repaint (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 	cairo_destroy(t->cairo);
 	g_mutex_unlock(&t->mutex);
 	return TRUE;
+}
+
+static void
+create_frame_toolbar (struct mjv_thread *thread)
+{
+	GtkWidget *toolbar = gtk_toolbar_new();
+	GtkToolItem *btn_record = gtk_toggle_tool_button_new_from_stock(GTK_STOCK_MEDIA_RECORD);
+	GtkToolItem *btn_connect = gtk_tool_button_new_from_stock(GTK_STOCK_CONNECT);
+	gtk_tool_button_set_label(GTK_TOOL_BUTTON(btn_record), "Record");
+	gtk_tool_button_set_label(GTK_TOOL_BUTTON(btn_connect), "Connect");
+	gtk_toolbar_insert(GTK_TOOLBAR(toolbar), btn_connect, -1);
+	gtk_toolbar_insert(GTK_TOOLBAR(toolbar), btn_record, -1);
+
+	// Save these to thread object:
+	thread->toolbar.toolbar = toolbar;
+	thread->toolbar.btn_record = btn_record;
+	thread->toolbar.btn_connect = btn_connect;
+}
+
+static GtkWidget *
+create_frame_statusbar (struct mjv_thread *thread)
+{
+	GtkWidget *hbox = gtk_hbox_new(FALSE, 4);
+	GtkWidget *vbox = gtk_vbox_new(FALSE, 4);
+
+	thread->statusbar.lbl_fps = gtk_label_new("0 fps");
+	thread->statusbar.lbl_status = gtk_label_new("disconnected");
+	thread->statusbar.lbl_framebuf = gtk_label_new("100/300");
+
+	gtk_box_pack_start(GTK_BOX(hbox), thread->statusbar.lbl_status, FALSE, FALSE, 2);
+	gtk_box_pack_start(GTK_BOX(hbox), gtk_vseparator_new(), FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(hbox), thread->statusbar.lbl_fps, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(hbox), gtk_vseparator_new(), FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(hbox), thread->statusbar.lbl_framebuf, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 2);
+
+	return vbox;
+}
+
+static void
+create_frame (struct mjv_thread *thread)
+{
+	thread->frame = gtk_frame_new(NULL);
+	create_frame_toolbar(thread);
+	GtkWidget *vbox = gtk_vbox_new(FALSE, 0);
+	GtkWidget *statusbar = create_frame_statusbar(thread);
+
+	gtk_box_pack_start(GTK_BOX(vbox), thread->toolbar.toolbar, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(vbox), thread->canvas, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(vbox), statusbar, FALSE, FALSE, 0);
+
+	gtk_container_add(GTK_CONTAINER(thread->frame), vbox);
 }
 
 struct mjv_thread *
@@ -268,6 +309,27 @@ on_spinner_tick (void *userdata)
 {
 	gdk_threads_enter();
 	gtk_widget_queue_draw(GTK_WIDGET(userdata));
+	gdk_threads_leave();
+}
+
+static char *
+status_string (struct mjv_thread *thread)
+{
+	switch (thread->state) {
+		case STATE_DISCONNECTED: return "disconnected";
+		case STATE_CONNECTING: return "connecting";
+		case STATE_CONNECTED: return "connected";
+	}
+	return "unknown";
+}
+
+static void
+update_state (struct mjv_thread *thread, enum state state)
+{
+	thread->state = state;
+	gdk_threads_enter();
+	gtk_label_set_text(GTK_LABEL(thread->statusbar.lbl_status), status_string(thread));
+	gtk_widget_queue_draw(thread->statusbar.lbl_status);
 	gdk_threads_leave();
 }
 
@@ -460,77 +522,4 @@ framerate_thread_main (void *user_data)
 		sleep(1);
 	}
 	return NULL;
-}
-
-static void
-create_frame (struct mjv_thread *thread)
-{
-	thread->frame = gtk_frame_new(NULL);
-	create_frame_toolbar(thread);
-	GtkWidget *vbox = gtk_vbox_new(FALSE, 0);
-	GtkWidget *statusbar = create_frame_statusbar(thread);
-
-	gtk_box_pack_start(GTK_BOX(vbox), thread->toolbar.toolbar, FALSE, FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(vbox), thread->canvas, FALSE, FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(vbox), statusbar, FALSE, FALSE, 0);
-
-	gtk_container_add(GTK_CONTAINER(thread->frame), vbox);
-}
-
-static void
-create_frame_toolbar (struct mjv_thread *thread)
-{
-	GtkWidget *toolbar = gtk_toolbar_new();
-	GtkToolItem *btn_record = gtk_toggle_tool_button_new_from_stock(GTK_STOCK_MEDIA_RECORD);
-	GtkToolItem *btn_connect = gtk_tool_button_new_from_stock(GTK_STOCK_CONNECT);
-	gtk_tool_button_set_label(GTK_TOOL_BUTTON(btn_record), "Record");
-	gtk_tool_button_set_label(GTK_TOOL_BUTTON(btn_connect), "Connect");
-	gtk_toolbar_insert(GTK_TOOLBAR(toolbar), btn_connect, -1);
-	gtk_toolbar_insert(GTK_TOOLBAR(toolbar), btn_record, -1);
-
-	// Save these to thread object:
-	thread->toolbar.toolbar = toolbar;
-	thread->toolbar.btn_record = btn_record;
-	thread->toolbar.btn_connect = btn_connect;
-}
-
-static GtkWidget *
-create_frame_statusbar (struct mjv_thread *thread)
-{
-	GtkWidget *hbox = gtk_hbox_new(FALSE, 4);
-	GtkWidget *vbox = gtk_vbox_new(FALSE, 4);
-
-	thread->statusbar.lbl_fps = gtk_label_new("0 fps");
-	thread->statusbar.lbl_status = gtk_label_new("disconnected");
-	thread->statusbar.lbl_framebuf = gtk_label_new("100/300");
-
-	gtk_box_pack_start(GTK_BOX(hbox), thread->statusbar.lbl_status, FALSE, FALSE, 2);
-	gtk_box_pack_start(GTK_BOX(hbox), gtk_vseparator_new(), FALSE, FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(hbox), thread->statusbar.lbl_fps, FALSE, FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(hbox), gtk_vseparator_new(), FALSE, FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(hbox), thread->statusbar.lbl_framebuf, FALSE, FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 2);
-
-	return vbox;
-}
-
-static char *
-status_string (struct mjv_thread *thread)
-{
-	switch (thread->state) {
-		case STATE_DISCONNECTED: return "disconnected";
-		case STATE_CONNECTING: return "connecting";
-		case STATE_CONNECTED: return "connected";
-	}
-	return "unknown";
-}
-
-static void
-update_state (struct mjv_thread *thread, enum state state)
-{
-	thread->state = state;
-	gdk_threads_enter();
-	gtk_label_set_text(GTK_LABEL(thread->statusbar.lbl_status), status_string(thread));
-	gtk_widget_queue_draw(thread->statusbar.lbl_status);
-	gdk_threads_leave();
 }

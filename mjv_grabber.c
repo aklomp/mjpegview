@@ -8,7 +8,7 @@
 
 #include "mjv_log.h"
 #include "mjv_source.h"
-#include "mjv_frame.h"
+#include "frame.h"
 #include "mjv_grabber.h"
 
 // Buffer must be large enough to hold the entire JPEG frame:
@@ -63,8 +63,8 @@ struct mjv_grabber
 	char *anchor;	// the first byte in the buffer to keep;
 
 	// This callback function is called whenever
-	// a mjv_frame object is created by a source:
-	void (*callback)(struct mjv_frame *, void *);
+	// a frame object is created by a source:
+	void (*callback)(struct frame *, void *);
 	void *user_pointer;
 };
 
@@ -147,7 +147,7 @@ mjv_grabber_destroy (struct mjv_grabber **s)
 }
 
 void
-mjv_grabber_set_callback (struct mjv_grabber *s, void (*got_frame_callback)(struct mjv_frame*, void*), void *user_pointer)
+mjv_grabber_set_callback (struct mjv_grabber *s, void (*got_frame_callback)(struct frame*, void*), void *user_pointer)
 {
 	s->callback = got_frame_callback;
 	s->user_pointer = user_pointer;
@@ -711,7 +711,7 @@ artificial_delay (unsigned int delay_usec, struct timespec *last)
 static bool
 got_new_frame (struct mjv_grabber *s, char *start, unsigned int len)
 {
-	struct mjv_frame *frame;
+	struct frame *frame;
 
 #if 0
 	// Quick validity check on the frame;
@@ -736,7 +736,7 @@ got_new_frame (struct mjv_grabber *s, char *start, unsigned int len)
 		log_error("No callback defined for frame\n");
 		return false;
 	}
-	if ((frame = mjv_frame_create(start, len)) == NULL) {
+	if ((frame = frame_create(start, len)) == NULL) {
 		log_error("Could not create frame\n");
 		return false;
 	}

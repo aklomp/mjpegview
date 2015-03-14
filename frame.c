@@ -5,7 +5,7 @@
 #include <jpeglib.h>
 #include <setjmp.h>
 
-struct mjv_frame {
+struct frame {
 	struct timespec *timestamp;
 	char *error;
 	unsigned char *rawbits;
@@ -21,10 +21,10 @@ struct my_jpeg_error_mgr {
 	jmp_buf setjmp_buffer;
 };
 
-struct mjv_frame *
-mjv_frame_create (const char *const rawbits, const unsigned int num_rawbits)
+struct frame *
+frame_create (const char *const rawbits, const unsigned int num_rawbits)
 {
-	struct mjv_frame *f = NULL;
+	struct frame *f = NULL;
 	struct timespec timestamp;
 
 	// First thing, timestamp this frame:
@@ -69,7 +69,7 @@ err:	if (f != NULL) {
 }
 
 void
-mjv_frame_destroy (struct mjv_frame **const f)
+frame_destroy (struct frame **const f)
 {
 	if (f == NULL || *f == NULL) {
 		return;
@@ -90,7 +90,7 @@ on_jpeg_error (j_common_ptr cinfo)
 }
 
 unsigned char *
-mjv_frame_to_pixbuf (struct mjv_frame *f)
+frame_to_pixbuf (struct frame *f)
 {
 	unsigned char *pixbuf;
 	struct jpeg_decompress_struct cinfo;
@@ -150,37 +150,37 @@ mjv_frame_to_pixbuf (struct mjv_frame *f)
 }
 
 unsigned int
-mjv_frame_get_width (const struct mjv_frame *const frame)
+frame_get_width (const struct frame *const frame)
 {
 	return frame->width;
 }
 
 unsigned int
-mjv_frame_get_height (const struct mjv_frame *const frame)
+frame_get_height (const struct frame *const frame)
 {
 	return frame->height;
 }
 
 unsigned int
-mjv_frame_get_row_stride (const struct mjv_frame *const frame)
+frame_get_row_stride (const struct frame *const frame)
 {
 	return frame->row_stride;
 }
 
 struct timespec *
-mjv_frame_get_timestamp (const struct mjv_frame *const frame)
+frame_get_timestamp (const struct frame *const frame)
 {
 	return frame->timestamp;
 }
 
 unsigned char *
-mjv_frame_get_rawbits (const struct mjv_frame *const frame)
+frame_get_rawbits (const struct frame *const frame)
 {
 	return frame->rawbits;
 }
 
 unsigned int
-mjv_frame_get_num_rawbits (const struct mjv_frame *const frame)
+frame_get_num_rawbits (const struct frame *const frame)
 {
 	return frame->num_rawbits;
 }

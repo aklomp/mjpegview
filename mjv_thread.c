@@ -7,7 +7,7 @@
 #include <glib.h>
 #include <gtk/gtk.h>
 
-#include "mjv_frame.h"
+#include "frame.h"
 #include "framebuf.h"
 #include "framerate.h"
 #include "mjv_source.h"
@@ -65,7 +65,7 @@ struct mjv_thread {
 #define BLINKER_HEIGHT	8
 
 static void *thread_main (void *);
-static void callback_got_frame (struct mjv_frame *, void *);
+static void callback_got_frame (struct frame *, void *);
 static void destroy_pixels (guchar *, gpointer);
 static void draw_blinker (cairo_t *, int, int, int);
 
@@ -329,7 +329,7 @@ update_framebuf_label (struct mjv_thread *thread)
 }
 
 static void
-callback_got_frame (struct mjv_frame *frame, void *user_data)
+callback_got_frame (struct frame *frame, void *user_data)
 {
 	unsigned char *pixels;
 	struct mjv_thread *thread = (struct mjv_thread *)(user_data);
@@ -338,13 +338,13 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 	g_assert(thread != NULL);
 
 	// Convert from JPEG to pixbuf:
-	if ((pixels = mjv_frame_to_pixbuf(frame)) == NULL) {
-		mjv_frame_destroy(&frame);
+	if ((pixels = frame_to_pixbuf(frame)) == NULL) {
+		frame_destroy(&frame);
 		return;
 	}
-	unsigned int width = mjv_frame_get_width(frame);
-	unsigned int height = mjv_frame_get_height(frame);
-	unsigned int row_stride = mjv_frame_get_row_stride(frame);
+	unsigned int width = frame_get_width(frame);
+	unsigned int height = frame_get_height(frame);
+	unsigned int row_stride = frame_get_row_stride(frame);
 
 	gdk_threads_enter();
 	g_mutex_lock(&thread->mutex);
@@ -379,7 +379,7 @@ callback_got_frame (struct mjv_frame *frame, void *user_data)
 	gtk_widget_queue_draw(thread->canvas);
 
 	g_mutex_lock(&thread->framerate_mutex);
-	framerate_insert_datapoint(thread->framerate, mjv_frame_get_timestamp(frame));
+	framerate_insert_datapoint(thread->framerate, frame_get_timestamp(frame));
 	g_mutex_unlock(&thread->framerate_mutex);
 
 	g_mutex_unlock(&thread->mutex);

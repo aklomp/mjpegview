@@ -16,7 +16,7 @@ all: $(MJPEGVIEW_PROG) $(MJVSINGLE_PROG) $(MJVMULTI_PROG)
 # These object files do not depend on GLib or GTK+-2:
 OBJS_PLAIN = \
   mjv_log.o \
-  mjv_frame.o \
+  frame.o \
   mjv_config.o \
   mjv_source.o \
   mjv_grabber.o \
@@ -49,7 +49,7 @@ $(OBJS_GTK): %.o: %.c
 MJPEGVIEW_LDFLAGS = -ljpeg -lconfig -lpthread -lrt
 MJPEGVIEW_OBJS = \
   mjv_log.o \
-  mjv_frame.o \
+  frame.o \
   mjv_source.o \
   mjv_grabber.o \
   filename.o \
@@ -71,7 +71,7 @@ $(MJPEGVIEW_PROG): $(MJPEGVIEW_OBJS)
 MJVSINGLE_LDFLAGS = -ljpeg -lrt
 MJVSINGLE_OBJS = \
   mjvsingle.o \
-  mjv_frame.o \
+  frame.o \
   mjv_source.o \
   mjv_grabber.o \
   filename.o \
@@ -87,7 +87,7 @@ $(MJVSINGLE_PROG): $(MJVSINGLE_OBJS)
 MJVMULTI_LDFLAGS = -ljpeg -lconfig -lpthread -lrt
 MJVMULTI_OBJS = \
   mjvmulti.o \
-  mjv_frame.o \
+  frame.o \
   mjv_config.o \
   mjv_source.o \
   mjv_grabber.o \

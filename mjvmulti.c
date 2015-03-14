@@ -11,7 +11,7 @@
 
 #include "mjv_config.h"
 #include "mjv_log.c"
-#include "mjv_frame.h"
+#include "frame.h"
 #include "mjv_source.h"
 #include "filename.h"
 #include "framerate.h"
@@ -166,20 +166,20 @@ write_image_file (char *data, size_t nbytes, const char *const srcname, unsigned
 }
 
 static void
-got_frame_callback (struct mjv_frame *f, void *data)
+got_frame_callback (struct frame *f, void *data)
 {
 	struct thread *t = data;
 
 	t->n_frames++;
 
 	// Feed the framerate estimator, get estimate:
-	framerate_insert_datapoint(t->fr, mjv_frame_get_timestamp(f));
+	framerate_insert_datapoint(t->fr, frame_get_timestamp(f));
 
 	// Write to file:
-	write_image_file((char *)mjv_frame_get_rawbits(f), mjv_frame_get_num_rawbits(f), mjv_source_get_name(t->s), t->n_frames, mjv_frame_get_timestamp(f));
+	write_image_file((char *)frame_get_rawbits(f), frame_get_num_rawbits(f), mjv_source_get_name(t->s), t->n_frames, frame_get_timestamp(f));
 
-	// We are responsible for freeing the mjv_frame when we're done with it:
-	mjv_frame_destroy(&f);
+	// We are responsible for freeing the frame when we're done with it:
+	frame_destroy(&f);
 }
 
 static void *

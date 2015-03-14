@@ -7,7 +7,7 @@
 #include <time.h>
 
 #include "mjv_log.h"
-#include "mjv_frame.h"
+#include "frame.h"
 #include "ringbuf.h"
 
 struct framebuf {
@@ -17,7 +17,7 @@ struct framebuf {
 static void
 on_frame_destroy (void *datum)
 {
-	mjv_frame_destroy((struct mjv_frame **)datum);
+	frame_destroy((struct frame **)datum);
 }
 
 struct framebuf *
@@ -29,7 +29,7 @@ framebuf_create (unsigned int size)
 		return NULL;
 	}
 	// Allocate ring buffer to hold references to the frames:
-	if ((fb->rb = ringbuf_create(size, sizeof(struct mjv_frame *), on_frame_destroy)) == NULL) {
+	if ((fb->rb = ringbuf_create(size, sizeof(struct frame *), on_frame_destroy)) == NULL) {
 		free(fb);
 		return NULL;
 	}
@@ -49,7 +49,7 @@ framebuf_destroy (struct framebuf **fb)
 }
 
 void
-framebuf_append (struct framebuf *fb, struct mjv_frame *frame)
+framebuf_append (struct framebuf *fb, struct frame *frame)
 {
 	ringbuf_append(fb->rb, &frame);
 }
@@ -68,14 +68,14 @@ framebuf_status_string (const struct framebuf *const fb)
 	if (fb == NULL) {
 		return NULL;
 	}
-	struct mjv_frame *old = *((struct mjv_frame **)ringbuf_oldest(fb->rb));
-	struct mjv_frame *new = *((struct mjv_frame **)ringbuf_newest(fb->rb));
+	struct frame *old = *((struct frame **)ringbuf_oldest(fb->rb));
+	struct frame *new = *((struct frame **)ringbuf_newest(fb->rb));
 
 	if (old == NULL || new == NULL) {
 		return NULL;
 	}
-	struct timespec *ts_old = mjv_frame_get_timestamp(old);
-	struct timespec *ts_new = mjv_frame_get_timestamp(new);
+	struct timespec *ts_old = frame_get_timestamp(old);
+	struct timespec *ts_new = frame_get_timestamp(new);
 
 	// Find time difference between oldest and newest frames:
 	int seconds = ts_new->tv_sec - ts_old->tv_sec;

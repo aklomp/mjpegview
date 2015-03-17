@@ -10,7 +10,9 @@
 
 #include "mjv_log.c"
 #include "frame.h"
-#include "mjv_source.h"
+#include "source.h"
+#include "source_file.h"
+#include "source_network.h"
 #include "filename.h"
 #include "framerate.h"
 #include "mjv_grabber.h"
@@ -218,7 +220,7 @@ int
 main (int argc, char **argv)
 {
 	int ret = 0;
-	struct mjv_source *s = NULL;
+	struct source *s = NULL;
 	struct mjv_grabber *g = NULL;
 	struct framerate *fr = NULL;
 
@@ -238,14 +240,14 @@ main (int argc, char **argv)
 		goto exit;
 	}
 	if (opts.filename != NULL) {
-		if ((s = mjv_source_create_from_file(opts.name, opts.filename, opts.usec)) == NULL) {
+		if ((s = source_file_create(opts.name, opts.filename, opts.usec)) == NULL) {
 			log_error("Error: could not create source from file\n");
 			ret = 1;
 			goto exit;
 		}
 	}
 	else if (opts.host != NULL) {
-		if ((s = mjv_source_create_from_network(opts.name, opts.host, opts.path, opts.user, opts.pass, opts.port)) == NULL) {
+		if ((s = source_network_create(opts.name, opts.host, opts.path, opts.user, opts.pass, opts.port)) == NULL) {
 			log_error("Error: could not create source from network\n");
 			ret = 1;
 			goto exit;
@@ -266,7 +268,7 @@ main (int argc, char **argv)
 		ret = 1;
 		goto exit;
 	}
-	if (mjv_source_open(s) == false) {
+	if (s->open(s) == false) {
 		log_error("Error: could not open config source\n");
 		ret = 1;
 		goto exit;
@@ -299,7 +301,9 @@ exit:	framerate_destroy(&fr);
 		close(write_fd);
 		write_fd = -1;
 	}
-	mjv_source_destroy(&s);
+	if (s) {
+		s->destroy(&s);
+	}
 	free(opts.pass);
 	free(opts.user);
 	free(opts.path);

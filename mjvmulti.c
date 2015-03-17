@@ -12,7 +12,9 @@
 #include "mjv_config.h"
 #include "mjv_log.c"
 #include "frame.h"
-#include "mjv_source.h"
+#include "source.h"
+#include "source_file.h"
+#include "source_network.h"
 #include "filename.h"
 #include "framerate.h"
 #include "mjv_grabber.h"
@@ -24,7 +26,7 @@
 // terms of simple interfaces and modularity.
 
 struct thread {
-	struct mjv_source *s;
+	struct source *s;
 	struct mjv_grabber *g;
 	struct framerate *fr;
 	int n_frames;
@@ -90,7 +92,7 @@ thread_cancel (struct thread *t)
 }
 
 static struct thread *
-thread_create (struct mjv_source *s)
+thread_create (struct source *s)
 {
 	struct thread *t;
 
@@ -176,7 +178,7 @@ got_frame_callback (struct frame *f, void *data)
 	framerate_insert_datapoint(t->fr, frame_get_timestamp(f));
 
 	// Write to file:
-	write_image_file((char *)frame_get_rawbits(f), frame_get_num_rawbits(f), mjv_source_get_name(t->s), t->n_frames, frame_get_timestamp(f));
+	write_image_file((char *)frame_get_rawbits(f), frame_get_num_rawbits(f), source_get_name(t->s), t->n_frames, frame_get_timestamp(f));
 
 	// We are responsible for freeing the frame when we're done with it:
 	frame_destroy(&f);
@@ -185,10 +187,10 @@ got_frame_callback (struct frame *f, void *data)
 static void *
 thread_main (void *data)
 {
-	struct mjv_source *s = ((struct thread *)data)->s;
+	struct source *s = ((struct thread *)data)->s;
 	struct mjv_grabber *g = ((struct thread *)data)->g;
 
-	if (mjv_source_open(s) == false) {
+	if (s->open(s) == false) {
 		log_error("Error: could not open config source\n");
 		goto exit;
 	}
@@ -231,7 +233,7 @@ main (int argc, char **argv)
 	int ret = 0;
 	char *filename = NULL;
 	struct mjv_config *config = NULL;
-	struct mjv_source *source = NULL;
+	struct source *source = NULL;
 	pthread_attr_t pthread_attr;
 	struct thread *first = NULL;
 	struct thread *t = NULL;

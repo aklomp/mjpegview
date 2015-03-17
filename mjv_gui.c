@@ -4,7 +4,7 @@
 
 #include "mjv_log.h"
 #include "mjv_config.h"
-#include "mjv_source.h"
+#include "source.h"
 #include "mjv_thread.h"
 
 // Cast a GList's data pointer to an object pointer:
@@ -35,7 +35,7 @@ int
 mjv_gui_main (int argc, char **argv, struct mjv_config *config)
 {
 	GList *link = NULL;
-	struct mjv_source *s;
+	struct source *s;
 
 	gdk_threads_init();
 	gtk_init(&argc, &argv);
@@ -50,7 +50,7 @@ mjv_gui_main (int argc, char **argv, struct mjv_config *config)
 		struct mjv_thread *thread = mjv_thread_create(s);
 
 		if (thread == NULL) {
-			log_error("Error: could not create thread for source %s\n", mjv_source_get_name(s));
+			log_error("Error: could not create thread for source %s\n", source_get_name(s));
 			continue;
 		}
 		thread_list = g_list_append(thread_list, thread);

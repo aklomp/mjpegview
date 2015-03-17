@@ -2,12 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <errno.h>
 #include <time.h>
 #include <unistd.h>
 
 #include "mjv_log.h"
-#include "mjv_source.h"
+#include "source.h"
 #include "frame.h"
 #include "mjv_grabber.h"
 
@@ -55,7 +54,7 @@ struct mjv_grabber
 	unsigned int response_code;
 	unsigned int content_length;
 	struct timespec last_emitted;
-	struct mjv_source *source;
+	struct source *source;
 
 	char *buf;	// read buffer;
 	char *cur;	// current char under inspection in buffer;
@@ -97,7 +96,7 @@ simple_atoi (const char *first, const char *last)
 }
 
 struct mjv_grabber *
-mjv_grabber_create (struct mjv_source *source)
+mjv_grabber_create (struct source *source)
 {
 	struct mjv_grabber *s = NULL;
 
@@ -139,7 +138,7 @@ mjv_grabber_destroy (struct mjv_grabber **s)
 	if (s == NULL || *s == NULL) {
 		return;
 	}
-	log_info("Destroying source %s\n", mjv_source_get_name((*s)->source));
+	log_info("Destroying source %s\n", source_get_name((*s)->source));
 	free((*s)->boundary);
 	free((*s)->buf);
 	free(*s);
@@ -193,11 +192,6 @@ adjust_streambuf (struct mjv_grabber *s)
 enum mjv_grabber_status
 mjv_grabber_run (struct mjv_grabber *s)
 {
-	int fd;
-	int available;
-	fd_set fdset;
-	struct timeval timeout;
-
 	// Jump table per state; order corresponds with
 	// the state enum at the top of this file:
 	int (*state_jump_table[])(struct mjv_grabber *) = {
@@ -209,42 +203,10 @@ mjv_grabber_run (struct mjv_grabber *s)
 		state_image_by_content_length,
 		state_image_by_eof_search
 	};
-	if ((fd = mjv_source_get_fd(s->source)) < 0) {
-		log_error("Invalid file descriptor\n");
-		return MJV_GRABBER_READ_ERROR;
-	}
-	int nfds = ((fd > s->selfpipe_readfd) ? fd : s->selfpipe_readfd) + 1;
-
 	for (;;)
 	{
-		FD_ZERO(&fdset);
-		FD_SET(fd, &fdset);
-		if (s->selfpipe_readfd >= 0) {
-			FD_SET(s->selfpipe_readfd, &fdset);
-		}
-		timeout.tv_sec = 10;
-		timeout.tv_usec = 0;
-
-		while ((available = select(nfds, &fdset, NULL, NULL, &timeout)) == -1 && errno == EINTR) {
-			continue;
-		}
-		if (available == 0) {
-			// timeout reached
-			log_info("Timeout reached. Giving up.\n");
-			return MJV_GRABBER_TIMEOUT;
-		}
-		if (available < 0) {
-			log_error("%s\n", strerror(errno));
-			return MJV_GRABBER_READ_ERROR;
-		}
-		// Check if a byte entered through the end of the self-pipe;
-		// this indicates that we need to exit the loop:
-		if (s->selfpipe_readfd >= 0 && FD_ISSET(s->selfpipe_readfd, &fdset)) {
-			break;
-		}
-		s->nread = read(fd, s->head, BUF_SIZE - (s->head - s->buf));
+		s->nread = s->source->read(s->source, s->head, BUF_SIZE - (s->head - s->buf));
 		if (s->nread < 0) {
-			log_error("%s\n", strerror(errno));
 			return MJV_GRABBER_READ_ERROR;
 		}
 		else if (s->nread == 0) {

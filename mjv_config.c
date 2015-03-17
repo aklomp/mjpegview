@@ -4,10 +4,12 @@
 #include <libconfig.h>
 
 #include "mjv_log.h"
-#include "mjv_source.h"
+#include "source.h"
+#include "source_file.h"
+#include "source_network.h"
 
 struct slist {
-	struct mjv_source *source;
+	struct source *source;
 	struct slist *next;
 };
 
@@ -45,7 +47,7 @@ mjv_config_destroy (struct mjv_config **const c)
 
 	for (s = (*c)->sources; s; s = t) {
 		t = s->next;
-		mjv_source_destroy(&s->source);
+		s->source->destroy(&s->source);
 		free(s);
 	}
 	free((*c)->config);
@@ -76,33 +78,33 @@ mjv_config_get_sources (struct mjv_config *const c)
 		const char *user = NULL;
 		const char *pass = NULL;
 		const char *file = NULL;
-		struct mjv_source *mjv_source;
+		struct source *source;
 		struct slist *s;
-		config_setting_t *source = config_setting_get_elem(sources, i);
+		config_setting_t *csource = config_setting_get_elem(sources, i);
 
-		if (config_setting_lookup_string(source, "type", &type) == CONFIG_FALSE) {
+		if (config_setting_lookup_string(csource, "type", &type) == CONFIG_FALSE) {
 			continue;
 		}
 		if (strcmp(type, "file") == 0)
 		{
-			config_setting_lookup_int(   source, "usec", &usec);
-			config_setting_lookup_string(source, "name", &name);
-			config_setting_lookup_string(source, "file", &file);
+			config_setting_lookup_int(   csource, "usec", &usec);
+			config_setting_lookup_string(csource, "name", &name);
+			config_setting_lookup_string(csource, "file", &file);
 
-			if ((mjv_source = mjv_source_create_from_file(name, file, usec)) == NULL) {
+			if ((source = source_file_create(name, file, usec)) == NULL) {
 				goto err;
 			}
 		}
 		else if (strcmp(type, "network") == 0)
 		{
-			config_setting_lookup_int(   source, "port", &port);
-			config_setting_lookup_string(source, "name", &name);
-			config_setting_lookup_string(source, "host", &host);
-			config_setting_lookup_string(source, "path", &path);
-			config_setting_lookup_string(source, "user", &user);
-			config_setting_lookup_string(source, "pass", &pass);
+			config_setting_lookup_int(   csource, "port", &port);
+			config_setting_lookup_string(csource, "name", &name);
+			config_setting_lookup_string(csource, "host", &host);
+			config_setting_lookup_string(csource, "path", &path);
+			config_setting_lookup_string(csource, "user", &user);
+			config_setting_lookup_string(csource, "pass", &pass);
 
-			if ((mjv_source = mjv_source_create_from_network(name, host, path, user, pass, port)) == NULL) {
+			if ((source = source_network_create(name, host, path, user, pass, port)) == NULL) {
 				goto err;
 			}
 		}
@@ -111,10 +113,10 @@ mjv_config_get_sources (struct mjv_config *const c)
 		}
 		// Allocate new node for linked list:
 		if ((s = malloc(sizeof(*s))) == NULL) {
-			mjv_source_destroy(&mjv_source);
+			source->destroy(&source);
 			goto err;
 		}
-		s->source = mjv_source;
+		s->source = source;
 		s->next = NULL;
 		if (c->iter == NULL) {
 			c->sources = s;
@@ -129,7 +131,7 @@ mjv_config_get_sources (struct mjv_config *const c)
 err:	// Destroy all sources found thus far:
 	for (c->iter = c->sources; c->iter; c->iter = t) {
 		t = c->iter->next;
-		mjv_source_destroy(&c->iter->source);
+		c->iter->source->destroy(&c->iter->source);
 		free(c->iter);
 	}
 	return false;
@@ -168,7 +170,7 @@ mjv_config_create_from_file (const char *const filename)
 	return c;
 }
 
-struct mjv_source *
+struct source *
 mjv_config_source_first (struct mjv_config *c)
 {
 	if (c == NULL || c->sources == NULL) {
@@ -178,7 +180,7 @@ mjv_config_source_first (struct mjv_config *c)
 	return (c->iter) ? c->iter->source : NULL;
 }
 
-struct mjv_source *
+struct source *
 mjv_config_source_next (struct mjv_config *c)
 {
 	if (c == NULL || c->iter == NULL) {

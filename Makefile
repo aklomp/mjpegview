@@ -18,7 +18,9 @@ OBJS_PLAIN = \
   mjv_log.o \
   frame.o \
   mjv_config.o \
-  mjv_source.o \
+  source.o \
+  source_file.o \
+  source_network.o \
   mjv_grabber.o \
   filename.o \
   framebuf.o \
@@ -50,7 +52,9 @@ MJPEGVIEW_LDFLAGS = -ljpeg -lconfig -lpthread -lrt
 MJPEGVIEW_OBJS = \
   mjv_log.o \
   frame.o \
-  mjv_source.o \
+  source.o \
+  source_file.o \
+  source_network.o \
   mjv_grabber.o \
   filename.o \
   framerate.o \
@@ -72,7 +76,9 @@ MJVSINGLE_LDFLAGS = -ljpeg -lrt
 MJVSINGLE_OBJS = \
   mjvsingle.o \
   frame.o \
-  mjv_source.o \
+  source.o \
+  source_file.o \
+  source_network.o \
   mjv_grabber.o \
   filename.o \
   framerate.o \
@@ -89,7 +95,9 @@ MJVMULTI_OBJS = \
   mjvmulti.o \
   frame.o \
   mjv_config.o \
-  mjv_source.o \
+  source.o \
+  source_file.o \
+  source_network.o \
   mjv_grabber.o \
   filename.o \
   framerate.o \

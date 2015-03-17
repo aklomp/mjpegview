@@ -10,7 +10,7 @@
 #include "frame.h"
 #include "framebuf.h"
 #include "framerate.h"
-#include "mjv_source.h"
+#include "source.h"
 #include "mjv_grabber.h"
 #include "mjv_thread.h"
 #include "selfpipe.h"
@@ -46,7 +46,7 @@ struct mjv_thread {
 	unsigned int height;
 	unsigned int blinker;
 	struct spinner *spinner;
-	struct mjv_source *source;
+	struct source *source;
 	struct mjv_grabber *grabber;
 	struct framebuf *framebuf;
 	struct toolbar toolbar;
@@ -120,7 +120,7 @@ canvas_repaint (GtkWidget *widget, GdkEventExpose *event, gpointer user_data)
 	}
 	cairo_paint(t->cairo);
 
-	if ((source_name = mjv_source_get_name(t->source)) != NULL) {
+	if ((source_name = source_get_name(t->source)) != NULL) {
 		print_source_name(t->cairo, source_name);
 	}
 	if (t->state == STATE_CONNECTING) {
@@ -187,7 +187,7 @@ create_frame (struct mjv_thread *thread)
 }
 
 struct mjv_thread *
-mjv_thread_create (struct mjv_source *source)
+mjv_thread_create (struct source *source)
 {
 	// This function creates a thread object, but does not run it.
 	// To run, call mjv_thread_run on the thread object.
@@ -343,7 +343,7 @@ thread_main (void *user_data)
 	update_state(t, STATE_CONNECTING);
 
 	// Open source file descriptor:
-	if (mjv_source_open(t->source) == false) {
+	if (t->source->open(t->source) == false) {
 		spinner_destroy(&t->spinner);
 		update_state(t, STATE_DISCONNECTED);
 		return NULL;

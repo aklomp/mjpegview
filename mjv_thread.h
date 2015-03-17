@@ -1,6 +1,6 @@
 struct mjv_thread;
 
-struct mjv_thread *mjv_thread_create (struct mjv_source *);
+struct mjv_thread *mjv_thread_create (struct source *);
 void mjv_thread_destroy (struct mjv_thread *);
 bool mjv_thread_run (struct mjv_thread *);
 bool mjv_thread_cancel (struct mjv_thread *);

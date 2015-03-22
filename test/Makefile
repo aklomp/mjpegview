@@ -21,7 +21,7 @@ test_filename: test_filename.c ../filename.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 test_framerate: test_framerate.c ../framerate.c ../ringbuf.o
-	$(CC) $(CFLAGS) -D_GNU_SOURCE -lrt ../ringbuf.o -o $@ $<
+	$(CC) $(CFLAGS) -D_GNU_SOURCE ../ringbuf.o -o $@ $< -lrt
 
 test_ringbuf: test_ringbuf.c ../ringbuf.c
 	$(CC) $(CFLAGS) -o $@ $<

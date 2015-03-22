@@ -3,11 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/types.h>
-#include <sys/select.h>
-#include <sys/socket.h>
 #include <netdb.h>
-#include <errno.h>
 
 #include "mjv_log.h"
 #include "source.h"
@@ -24,7 +20,7 @@ static char err_malloc_failed[] = "malloc() failed\n";
 #define SAFE_WRITE(x, y) \
 	{ \
 		int write_size = y; \
-		if (write(sn->fd, x, write_size) != write_size) { \
+		if (write(sn->source.fd, x, write_size) != write_size) { \
 			log_error(err_write_failed); \
 			ret = 0; \
 			goto err; \
@@ -41,7 +37,6 @@ struct source_network {
 	char *user;
 	char *pass;
 	int   port;
-	int   fd;
 };
 
 static void
@@ -196,64 +191,28 @@ open_network (struct source *s)
 	// Loop over results, trying them all till we find a descriptor
 	// that works:
 	for (rp = result; rp != NULL; rp = rp->ai_next) {
-		if ((sn->fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) < 0) {
+		if ((s->fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) < 0) {
 			continue;
 		}
-		if (connect(sn->fd, rp->ai_addr, rp->ai_addrlen) >= 0) {
+		if (connect(s->fd, rp->ai_addr, rp->ai_addrlen) >= 0) {
 			break;
 		}
-		close(sn->fd);
+		close(s->fd);
 	}
 	freeaddrinfo(result);
 	if (rp == NULL) {
-		sn->fd = -1;
+		s->fd = -1;
 		return false;
 	}
 	return write_http_request(sn);
 }
 
-static ssize_t
-read_network (struct source *s, void *buf, size_t bufsize)
-{
-	struct source_network *sn = (struct source_network *)s;
-
-	int available;
-	fd_set fdset;
-	struct timeval timeout;
-	ssize_t nread;
-
-	FD_ZERO(&fdset);
-	FD_SET(sn->fd, &fdset);
-	timeout.tv_sec = 10;
-	timeout.tv_usec = 0;
-
-	while ((available = select(sn->fd + 1, &fdset, NULL, NULL, &timeout)) == -1 && errno == EINTR) {
-		continue;
-	}
-	// Timeout reached:
-	if (available == 0) {
-		log_info("Timeout reached. Giving up.\n");
-		return -1;
-	}
-	// Other failure:
-	if (available < 0) {
-		log_error("Read error: %s\n", strerror(errno));
-		return -1;
-	}
-	if ((nread = read(sn->fd, buf, bufsize)) < 0) {
-		log_error("Read error: %s\n", strerror(errno));
-	}
-	return nread;
-}
-
 static void
 close_network (struct source *s)
 {
-	struct source_network *sn = (struct source_network *)s;
-
-	if (sn->fd >= 0) {
-		close(sn->fd);
-		sn->fd = -1;
+	if (s->fd >= 0) {
+		close(s->fd);
+		s->fd = -1;
 	}
 }
 
@@ -290,7 +249,7 @@ source_network_create (
 		goto err0;
 	}
 	// Init the generic Source part:
-	if (source_init(&sn->source, name, open_network, read_network, close_network, source_network_destroy) == false) {
+	if (source_init(&sn->source, name, open_network, close_network, source_network_destroy) == false) {
 		goto err1;
 	}
 	sn->host = NULL;
@@ -312,7 +271,7 @@ source_network_create (
 		goto err5;
 	}
 	sn->port = port;
-	sn->fd = -1;
+	sn->source.fd = -1;
 	return &sn->source;
 
 err5:	free(sn->user);

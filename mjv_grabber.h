@@ -19,6 +19,5 @@ void mjv_grabber_destroy (struct mjv_grabber**);
 // to a callback function:
 enum mjv_grabber_status mjv_grabber_run (struct mjv_grabber*);
 void mjv_grabber_set_callback (struct mjv_grabber *s, void (*got_frame_callback)(struct frame*, void*), void*);
-void mjv_grabber_set_selfpipe (struct mjv_grabber *s, int pipe_read_fd);
 
 #endif	// MJV_GRABBER_H

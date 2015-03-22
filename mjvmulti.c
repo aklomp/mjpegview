@@ -70,7 +70,6 @@ thread_destroy (struct thread **t)
 	}
 	if ((*t)->read_fd >= 0) {
 		close((*t)->read_fd);
-		mjv_grabber_set_selfpipe((*t)->g, -1);
 	}
 	if ((*t)->write_fd >= 0) {
 		close((*t)->write_fd);
@@ -111,7 +110,7 @@ thread_create (struct source *s)
 	if ((t->g = mjv_grabber_create(t->s)) == NULL) {
 		goto err;
 	}
-	mjv_grabber_set_selfpipe(t->g, t->read_fd);
+	source_set_selfpipe(s, t->read_fd);
 
 	if ((t->fr = framerate_create(15)) == NULL) {
 		goto err;

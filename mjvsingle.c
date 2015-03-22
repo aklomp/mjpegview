@@ -279,7 +279,7 @@ main (int argc, char **argv)
 		ret = 1;
 		goto exit;
 	}
-	mjv_grabber_set_selfpipe(g, read_fd);
+	source_set_selfpipe(s, read_fd);
 
 	// Grabbed frames will be handled by got_frame_callback():
 	mjv_grabber_set_callback(g, got_frame_callback, fr);

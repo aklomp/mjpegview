@@ -208,6 +208,8 @@ mjv_thread_create (struct source *source)
 	if (selfpipe_pair(&t->selfpipe_readfd, &t->selfpipe_writefd) == false) {
 		goto err_3;
 	}
+	source_set_selfpipe(source, t->selfpipe_readfd);
+
 	t->width   = 640;
 	t->height  = 480;
 	t->source  = source;
@@ -354,7 +356,6 @@ thread_main (void *user_data)
 		return NULL;
 	}
 	mjv_grabber_set_callback(t->grabber, &callback_got_frame, (void *)t);
-	mjv_grabber_set_selfpipe(t->grabber, t->selfpipe_readfd);
 
 	// We are connected:
 	update_state(t, STATE_CONNECTED);

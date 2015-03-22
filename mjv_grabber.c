@@ -49,7 +49,6 @@ struct mjv_grabber
 	enum states state;	// state machine state
 	char *boundary;
 	int delay_usec;
-	int selfpipe_readfd;	// selfpipe read end (for cancellation notification)
 	unsigned int boundary_len;
 	unsigned int response_code;
 	unsigned int content_length;
@@ -115,7 +114,6 @@ mjv_grabber_create (struct source *source)
 	s->last_emitted.tv_sec = 0;
 	s->last_emitted.tv_nsec = 0;
 	s->source = source;
-	s->selfpipe_readfd = -1;
 
 	s->callback = NULL;
 	s->user_pointer = NULL;
@@ -150,12 +148,6 @@ mjv_grabber_set_callback (struct mjv_grabber *s, void (*got_frame_callback)(stru
 {
 	s->callback = got_frame_callback;
 	s->user_pointer = user_pointer;
-}
-
-void
-mjv_grabber_set_selfpipe (struct mjv_grabber *s, int pipe_read_fd)
-{
-	s->selfpipe_readfd = pipe_read_fd;
 }
 
 static void
@@ -205,7 +197,7 @@ mjv_grabber_run (struct mjv_grabber *s)
 	};
 	for (;;)
 	{
-		s->nread = s->source->read(s->source, s->head, BUF_SIZE - (s->head - s->buf));
+		s->nread = source_read(s->source, s->head, BUF_SIZE - (s->head - s->buf));
 		if (s->nread < 0) {
 			return MJV_GRABBER_READ_ERROR;
 		}

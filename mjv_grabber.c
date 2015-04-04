@@ -36,7 +36,13 @@ enum states {
 	STATE_IMAGE_BY_EOF_SEARCH
 };
 
-enum { READ_SUCCESS, OUT_OF_BYTES, CORRUPT_HEADER, READ_ERROR };
+// Return codes for each state:
+enum state_result {
+	READ_SUCCESS,
+	OUT_OF_BYTES,
+	CORRUPT_HEADER,
+	READ_ERROR
+};
 
 static char header_content_type_one[] = "Content-Type:";
 static char header_content_type_two[] = "Content-type:";
@@ -141,14 +147,14 @@ is_numeric (char c)
 	return (c >= '0' && c <= '9');
 }
 
-static inline int
+static inline enum state_result
 increment_cur (struct mjv_grabber *s)
 {
 	s->cur++;
 	return (s->cur >= s->head) ? OUT_OF_BYTES : READ_SUCCESS;
 }
 
-static int
+static enum state_result
 fetch_header_line (struct mjv_grabber *s, char **line, unsigned int *line_len)
 {
 	// Assume s->cur is on the first character of the line
@@ -178,7 +184,7 @@ fetch_header_line (struct mjv_grabber *s, char **line, unsigned int *line_len)
 	}
 }
 
-static int
+static enum state_result
 interpret_content_type (struct mjv_grabber *s, char *line, unsigned int line_len)
 {
 	char *cur;
@@ -324,7 +330,7 @@ got_new_frame (struct mjv_grabber *s, char *start, unsigned int len)
 	return true;
 }
 
-static int
+static enum state_result
 state_http_banner (struct mjv_grabber *s)
 {
 	int ret;
@@ -370,7 +376,7 @@ state_http_banner (struct mjv_grabber *s)
 	return increment_cur(s);
 }
 
-static int
+static enum state_result
 state_http_header (struct mjv_grabber *s)
 {
 	int ret;
@@ -409,7 +415,7 @@ state_http_header (struct mjv_grabber *s)
 	return increment_cur(s);
 }
 
-static int
+static enum state_result
 state_find_boundary (struct mjv_grabber *s)
 {
 	// Loop over the input till we find a \r\n or an \n followed by
@@ -458,7 +464,7 @@ state_find_boundary (struct mjv_grabber *s)
 	return increment_cur(s);
 }
 
-static int
+static enum state_result
 state_http_subheader (struct mjv_grabber *s)
 {
 	int ret;
@@ -506,7 +512,7 @@ state_http_subheader (struct mjv_grabber *s)
 #undef STRING_MATCH
 }
 
-static int
+static enum state_result
 state_find_image (struct mjv_grabber *s)
 {
 	// Consume bytes from the buffer till we find the
@@ -542,7 +548,7 @@ state_find_image (struct mjv_grabber *s)
 	return increment_cur(s);
 }
 
-static int
+static enum state_result
 state_image_by_content_length (struct mjv_grabber *s)
 {
 #define BYTES_LEFT_IN_BUF (s->head - s->cur - 1)
@@ -582,7 +588,7 @@ state_image_by_content_length (struct mjv_grabber *s)
 #undef BYTES_LEFT_IN_BUF
 }
 
-static int
+static enum state_result
 state_image_by_eof_search (struct mjv_grabber *s)
 {
 	// If no content-length known, then there's nothing we can
@@ -638,7 +644,7 @@ mjv_grabber_run (struct mjv_grabber *s)
 {
 	// Jump table per state; order corresponds with
 	// the state enum at the top of this file:
-	int (*state_jump_table[])(struct mjv_grabber *) = {
+	enum state_result (*state_jump_table[])(struct mjv_grabber *) = {
 		state_http_banner,
 		state_http_header,
 		state_find_boundary,

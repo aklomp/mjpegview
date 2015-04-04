@@ -38,10 +38,10 @@ enum states {
 
 enum { READ_SUCCESS, OUT_OF_BYTES, CORRUPT_HEADER, READ_ERROR };
 
-char header_content_type_one[] = "Content-Type:";
-char header_content_type_two[] = "Content-type:";
-char header_content_length_one[] = "Content-Length:";
-char header_content_length_two[] = "Content-length:";
+static char header_content_type_one[] = "Content-Type:";
+static char header_content_type_two[] = "Content-type:";
+static char header_content_length_one[] = "Content-Length:";
+static char header_content_length_two[] = "Content-length:";
 
 struct mjv_grabber
 {
@@ -65,21 +65,6 @@ struct mjv_grabber
 	void (*callback)(struct frame *, void *);
 	void *user_pointer;
 };
-
-static int fetch_header_line (struct mjv_grabber *, char **, unsigned int *);
-static inline int increment_cur (struct mjv_grabber *);
-static inline bool is_numeric (char);
-static int interpret_content_type (struct mjv_grabber *, char *, unsigned int);
-static bool got_new_frame (struct mjv_grabber *, char *, unsigned int);
-static void adjust_streambuf (struct mjv_grabber *);
-
-static int state_http_banner (struct mjv_grabber *);
-static int state_http_header (struct mjv_grabber *);
-static int state_find_boundary (struct mjv_grabber *);
-static int state_http_subheader (struct mjv_grabber *);
-static int state_find_image (struct mjv_grabber *);
-static int state_image_by_content_length (struct mjv_grabber *);
-static int state_image_by_eof_search (struct mjv_grabber *);
 
 static inline unsigned int
 simple_atoi (const char *first, const char *last)
@@ -150,86 +135,193 @@ mjv_grabber_set_callback (struct mjv_grabber *s, void (*got_frame_callback)(stru
 	s->user_pointer = user_pointer;
 }
 
-static void
-adjust_streambuf (struct mjv_grabber *s)
+static inline bool
+is_numeric (char c)
 {
-	// Cheap test: if anchored at start of buffer, nothing to do:
-	if (s->anchor == s->buf) {
-		return;
-	}
-	// First byte to keep is either the byte at the anchor,
-	// or the byte at cur:
-	char *keepfrom = (s->anchor == NULL) ? s->cur : s->anchor;
+	return (c >= '0' && c <= '9');
+}
 
-	// How much bytes at the start to shift over:
-	unsigned int offset = keepfrom - s->buf;
+static inline int
+increment_cur (struct mjv_grabber *s)
+{
+	s->cur++;
+	return (s->cur >= s->head) ? OUT_OF_BYTES : READ_SUCCESS;
+}
 
-	// How much bytes left from keep till end?
-	unsigned int good_bytes = s->head - keepfrom;
-
-	// If important bytes left in buffer at an offset, move them:
-	if (good_bytes > 0 && offset > 0) {
-		memmove(s->buf, keepfrom, good_bytes);
-		s->cur -= offset;
-		s->head -= offset;
-		s->anchor -= offset;
-		return;
-	}
-	// Else if no anchor, reset to start of buffer:
+static int
+fetch_header_line (struct mjv_grabber *s, char **line, unsigned int *line_len)
+{
+	// Assume s->cur is on the first character of the line
+	// Consume buffer until we hit a line terminator:
 	if (s->anchor == NULL) {
-		s->cur = s->head = s->buf;
+		s->anchor = s->cur;
+	}
+	for (;;)
+	{
+		// Search for \n's; some cameras do not use the \r\n convention,
+		// but plain \n as a line terminator:
+		if (*s->cur == (char)0x0a) {
+			// If preceded by an 0x0d, count that as a line terminator too:
+			if (LINE_LEN >= 2 && *(s->cur - 1) == (char)0x0d) {
+				*line_len = LINE_LEN - 2;
+			}
+			else {
+				*line_len = LINE_LEN - 1;
+			}
+			*line = s->anchor;
+			s->anchor = NULL;
+			return READ_SUCCESS;
+		}
+		if (increment_cur(s) == OUT_OF_BYTES) {
+			return OUT_OF_BYTES;
+		}
 	}
 }
 
-enum mjv_grabber_status
-mjv_grabber_run (struct mjv_grabber *s)
+static int
+interpret_content_type (struct mjv_grabber *s, char *line, unsigned int line_len)
 {
-	// Jump table per state; order corresponds with
-	// the state enum at the top of this file:
-	int (*state_jump_table[])(struct mjv_grabber *) = {
-		state_http_banner,
-		state_http_header,
-		state_find_boundary,
-		state_http_subheader,
-		state_find_image,
-		state_image_by_content_length,
-		state_image_by_eof_search
-	};
+	char *cur;
+	char *last;
+	char multipart_x_mixed_replace[] = "multipart/x-mixed-replace";
+	char multipart_mixed[] = "multipart/mixed";
+	char boundary[] = "boundary=";
+
+	cur = line + STR_LEN(header_content_type_one);
+	last = line + line_len - 1;
+
+#define SIZE_LEFT	(unsigned int)(last + 1 - cur)
+#define SKIP_SPACES	while (*cur == ' ') { if (cur++ == last) return CORRUPT_HEADER; }
+#define STRING_MATCH(x)	(SIZE_LEFT >= (intptr_t)STR_LEN(x) && strncmp(cur, x, STR_LEN(x)) == 0)
+
+	SKIP_SPACES;
+
+	// Try to establish mime type:
+	if (STRING_MATCH(multipart_x_mixed_replace)) {
+		cur += STR_LEN(multipart_x_mixed_replace);
+	}
+	else if (STRING_MATCH(multipart_mixed)) {
+		cur += STR_LEN(multipart_mixed);
+	}
+	// The rest of this field is divided into subfields by semicolons.
+	// So split the field on the semicolons:
 	for (;;)
 	{
-		s->nread = source_read(s->source, s->head, BUF_SIZE - (s->head - s->buf));
-		if (s->nread < 0) {
-			return MJV_GRABBER_READ_ERROR;
+		// Find next semicolon or EOL:
+		while (*cur != ';') {
+			if (cur++ == last) {
+				return READ_SUCCESS;
+			}
 		}
-		else if (s->nread == 0) {
-			log_info("End of file\n");
-			return MJV_GRABBER_PREMATURE_EOF;
+		// Advance past semicolon:
+		if (cur++ == last) {
+			return READ_SUCCESS;
 		}
-		// buflast is always ONE PAST the real last char:
-		s->head += s->nread;
-
-		log_debug("Read %u bytes\n", s->nread);
-
-		// Dispatcher; while successful, keep jumping from state to state:
-next_state: 	switch (state_jump_table[s->state](s))
-		{
-			case READ_SUCCESS:
-				goto next_state;
-
-			case OUT_OF_BYTES:
-				adjust_streambuf(s);
-				continue;
-
-			case READ_ERROR:
-				log_error("READ_ERROR\n");
-				return MJV_GRABBER_READ_ERROR;
-
-			case CORRUPT_HEADER:
-				log_error("Corrupt header\n");
-				return MJV_GRABBER_CORRUPT_HEADER;
+		// Skip spaces:
+		while (*cur == ' ') {
+			if (cur++ == last) {
+				return READ_SUCCESS;
+			}
+		}
+		// Try to match interesting subfields.
+		// For now, the boundary:
+		if (STRING_MATCH(boundary)) {
+			char *end;
+			cur += STR_LEN(boundary);
+			end = cur;
+			// Everything up to EOL or next semicolon is boundary:
+			while (*end != ';' && end != last) {
+				end++;
+			}
+			if (end > cur) {
+				// Allocate storage for boundary, copy over:
+				s->boundary_len = end - cur + 1;
+				if ((s->boundary = malloc(s->boundary_len + 1)) == NULL) {
+					// TODO: better handling
+					log_error("malloc()");
+					return READ_ERROR;
+				}
+				memcpy(s->boundary, cur, s->boundary_len);
+				s->boundary[s->boundary_len] = 0;
+			}
 		}
 	}
-	return MJV_GRABBER_SUCCESS;
+	return READ_SUCCESS;
+
+#undef SIZE_LEFT
+#undef SKIP_SPACES
+#undef STRING_MATCH
+}
+
+static void
+artificial_delay (unsigned int delay_usec, struct timespec *last)
+{
+	struct timespec now;
+	unsigned long delay_sec;
+	unsigned long delay_nsec;
+
+	if (delay_usec < 1000000) {
+		delay_sec = 0;
+		delay_nsec = delay_usec * 1000;
+	}
+	else {
+		delay_sec = delay_usec / 1000000;
+		delay_nsec = (delay_usec % 1000000) * 1000;
+	}
+	clock_gettime(CLOCK_REALTIME, &now);
+
+	// Need a nonzero previous timestamp to time against:
+	if (last->tv_sec > 0)
+	{
+		// Calculate scheduled awakening:
+		now.tv_sec  = last->tv_sec  + delay_sec;
+		now.tv_nsec = last->tv_nsec + delay_nsec;
+		if (now.tv_nsec >= 1000000000) {
+			now.tv_sec++;
+			now.tv_nsec -= 1000000000;
+		}
+		// Keep sleeping across interrupts until the now has come to pass:
+		while (clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &now, NULL) != 0);
+	}
+	// Update the last emission time to the now:
+	memcpy(last, &now, sizeof(struct timespec));
+}
+
+static bool
+got_new_frame (struct mjv_grabber *s, char *start, unsigned int len)
+{
+	struct frame *frame;
+
+#if 0
+	// Quick validity check on the frame;
+	// must start with 0xffd8 and end with 0xffd9:
+	if (!VALUE_AT(start, 0xffd8)) {
+		log_error("Invalid start marker!\n");
+	}
+	if (!VALUE_AT(start + len - 2, 0xffd9)) {
+		log_error("%s: invalid JPEG EOF signature\n", s->name);
+		{
+			char *c;
+			for (c = start + len - 20; c < start + len + 20; c++) {
+				if (VALUE_AT(c, 0xffd9)) log_error("Off by %i??\n", c - (start + len - 2));
+			}
+		}
+	}
+#endif
+	if (s->delay_usec > 0) {
+		artificial_delay(s->delay_usec, &s->last_emitted);
+	}
+	if (s->callback == NULL) {
+		log_error("No callback defined for frame\n");
+		return false;
+	}
+	if ((frame = frame_create(start, len)) == NULL) {
+		log_error("Could not create frame\n");
+		return false;
+	}
+	s->callback(frame, s->user_pointer);
+
+	return true;
 }
 
 static int
@@ -510,191 +602,84 @@ state_image_by_eof_search (struct mjv_grabber *s)
 	}
 }
 
-static inline bool
-is_numeric (char c)
-{
-	return (c >= '0' && c <= '9');
-}
-
-static inline int
-increment_cur (struct mjv_grabber *s)
-{
-	s->cur++;
-	return (s->cur >= s->head) ? OUT_OF_BYTES : READ_SUCCESS;
-}
-
-static int
-fetch_header_line (struct mjv_grabber *s, char **line, unsigned int *line_len)
-{
-	// Assume s->cur is on the first character of the line
-	// Consume buffer until we hit a line terminator:
-	if (s->anchor == NULL) {
-		s->anchor = s->cur;
-	}
-	for (;;)
-	{
-		// Search for \n's; some cameras do not use the \r\n convention,
-		// but plain \n as a line terminator:
-		if (*s->cur == (char)0x0a) {
-			// If preceded by an 0x0d, count that as a line terminator too:
-			if (LINE_LEN >= 2 && *(s->cur - 1) == (char)0x0d) {
-				*line_len = LINE_LEN - 2;
-			}
-			else {
-				*line_len = LINE_LEN - 1;
-			}
-			*line = s->anchor;
-			s->anchor = NULL;
-			return READ_SUCCESS;
-		}
-		if (increment_cur(s) == OUT_OF_BYTES) {
-			return OUT_OF_BYTES;
-		}
-	}
-}
-
-static int
-interpret_content_type (struct mjv_grabber *s, char *line, unsigned int line_len)
-{
-	char *cur;
-	char *last;
-	char multipart_x_mixed_replace[] = "multipart/x-mixed-replace";
-	char multipart_mixed[] = "multipart/mixed";
-	char boundary[] = "boundary=";
-
-	cur = line + STR_LEN(header_content_type_one);
-	last = line + line_len - 1;
-
-#define SIZE_LEFT	(unsigned int)(last + 1 - cur)
-#define SKIP_SPACES	while (*cur == ' ') { if (cur++ == last) return CORRUPT_HEADER; }
-#define STRING_MATCH(x)	(SIZE_LEFT >= (intptr_t)STR_LEN(x) && strncmp(cur, x, STR_LEN(x)) == 0)
-
-	SKIP_SPACES;
-
-	// Try to establish mime type:
-	if (STRING_MATCH(multipart_x_mixed_replace)) {
-		cur += STR_LEN(multipart_x_mixed_replace);
-	}
-	else if (STRING_MATCH(multipart_mixed)) {
-		cur += STR_LEN(multipart_mixed);
-	}
-	// The rest of this field is divided into subfields by semicolons.
-	// So split the field on the semicolons:
-	for (;;)
-	{
-		// Find next semicolon or EOL:
-		while (*cur != ';') {
-			if (cur++ == last) {
-				return READ_SUCCESS;
-			}
-		}
-		// Advance past semicolon:
-		if (cur++ == last) {
-			return READ_SUCCESS;
-		}
-		// Skip spaces:
-		while (*cur == ' ') {
-			if (cur++ == last) {
-				return READ_SUCCESS;
-			}
-		}
-		// Try to match interesting subfields.
-		// For now, the boundary:
-		if (STRING_MATCH(boundary)) {
-			char *end;
-			cur += STR_LEN(boundary);
-			end = cur;
-			// Everything up to EOL or next semicolon is boundary:
-			while (*end != ';' && end != last) {
-				end++;
-			}
-			if (end > cur) {
-				// Allocate storage for boundary, copy over:
-				s->boundary_len = end - cur + 1;
-				if ((s->boundary = malloc(s->boundary_len + 1)) == NULL) {
-					// TODO: better handling
-					log_error("malloc()");
-					return READ_ERROR;
-				}
-				memcpy(s->boundary, cur, s->boundary_len);
-				s->boundary[s->boundary_len] = 0;
-			}
-		}
-	}
-	return READ_SUCCESS;
-
-#undef SIZE_LEFT
-#undef SKIP_SPACES
-#undef STRING_MATCH
-}
-
 static void
-artificial_delay (unsigned int delay_usec, struct timespec *last)
+adjust_streambuf (struct mjv_grabber *s)
 {
-	struct timespec now;
-	unsigned long delay_sec;
-	unsigned long delay_nsec;
+	// Cheap test: if anchored at start of buffer, nothing to do:
+	if (s->anchor == s->buf) {
+		return;
+	}
+	// First byte to keep is either the byte at the anchor,
+	// or the byte at cur:
+	char *keepfrom = (s->anchor == NULL) ? s->cur : s->anchor;
 
-	if (delay_usec < 1000000) {
-		delay_sec = 0;
-		delay_nsec = delay_usec * 1000;
-	}
-	else {
-		delay_sec = delay_usec / 1000000;
-		delay_nsec = (delay_usec % 1000000) * 1000;
-	}
-	clock_gettime(CLOCK_REALTIME, &now);
+	// How much bytes at the start to shift over:
+	unsigned int offset = keepfrom - s->buf;
 
-	// Need a nonzero previous timestamp to time against:
-	if (last->tv_sec > 0)
-	{
-		// Calculate scheduled awakening:
-		now.tv_sec  = last->tv_sec  + delay_sec;
-		now.tv_nsec = last->tv_nsec + delay_nsec;
-		if (now.tv_nsec >= 1000000000) {
-			now.tv_sec++;
-			now.tv_nsec -= 1000000000;
-		}
-		// Keep sleeping across interrupts until the now has come to pass:
-		while (clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &now, NULL) != 0);
+	// How much bytes left from keep till end?
+	unsigned int good_bytes = s->head - keepfrom;
+
+	// If important bytes left in buffer at an offset, move them:
+	if (good_bytes > 0 && offset > 0) {
+		memmove(s->buf, keepfrom, good_bytes);
+		s->cur -= offset;
+		s->head -= offset;
+		s->anchor -= offset;
+		return;
 	}
-	// Update the last emission time to the now:
-	memcpy(last, &now, sizeof(struct timespec));
+	// Else if no anchor, reset to start of buffer:
+	if (s->anchor == NULL) {
+		s->cur = s->head = s->buf;
+	}
 }
 
-static bool
-got_new_frame (struct mjv_grabber *s, char *start, unsigned int len)
+enum mjv_grabber_status
+mjv_grabber_run (struct mjv_grabber *s)
 {
-	struct frame *frame;
+	// Jump table per state; order corresponds with
+	// the state enum at the top of this file:
+	int (*state_jump_table[])(struct mjv_grabber *) = {
+		state_http_banner,
+		state_http_header,
+		state_find_boundary,
+		state_http_subheader,
+		state_find_image,
+		state_image_by_content_length,
+		state_image_by_eof_search
+	};
+	for (;;)
+	{
+		s->nread = source_read(s->source, s->head, BUF_SIZE - (s->head - s->buf));
+		if (s->nread < 0) {
+			return MJV_GRABBER_READ_ERROR;
+		}
+		else if (s->nread == 0) {
+			log_info("End of file\n");
+			return MJV_GRABBER_PREMATURE_EOF;
+		}
+		// buflast is always ONE PAST the real last char:
+		s->head += s->nread;
 
-#if 0
-	// Quick validity check on the frame;
-	// must start with 0xffd8 and end with 0xffd9:
-	if (!VALUE_AT(start, 0xffd8)) {
-		log_error("Invalid start marker!\n");
-	}
-	if (!VALUE_AT(start + len - 2, 0xffd9)) {
-		log_error("%s: invalid JPEG EOF signature\n", s->name);
+		log_debug("Read %u bytes\n", s->nread);
+
+		// Dispatcher; while successful, keep jumping from state to state:
+next_state: 	switch (state_jump_table[s->state](s))
 		{
-			char *c;
-			for (c = start + len - 20; c < start + len + 20; c++) {
-				if (VALUE_AT(c, 0xffd9)) log_error("Off by %i??\n", c - (start + len - 2));
-			}
+			case READ_SUCCESS:
+				goto next_state;
+
+			case OUT_OF_BYTES:
+				adjust_streambuf(s);
+				continue;
+
+			case READ_ERROR:
+				log_error("READ_ERROR\n");
+				return MJV_GRABBER_READ_ERROR;
+
+			case CORRUPT_HEADER:
+				log_error("Corrupt header\n");
+				return MJV_GRABBER_CORRUPT_HEADER;
 		}
 	}
-#endif
-	if (s->delay_usec > 0) {
-		artificial_delay(s->delay_usec, &s->last_emitted);
-	}
-	if (s->callback == NULL) {
-		log_error("No callback defined for frame\n");
-		return false;
-	}
-	if ((frame = frame_create(start, len)) == NULL) {
-		log_error("Could not create frame\n");
-		return false;
-	}
-	s->callback(frame, s->user_pointer);
-
-	return true;
+	return MJV_GRABBER_SUCCESS;
 }
